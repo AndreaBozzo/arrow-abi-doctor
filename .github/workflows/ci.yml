@@ -1,0 +1,89 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-gcc:
+    name: linux / gcc / -Werror
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build
+      - name: configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DABI_WERROR=ON
+      - name: build
+        run: cmake --build build
+      - name: test
+        run: ctest --test-dir build --output-on-failure
+
+  sanitizers:
+    name: linux / asan + ubsan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build
+      - name: configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DABI_SANITIZERS=ON -DABI_WERROR=ON
+      - name: build
+        run: cmake --build build
+      # The truncation and corruption sweeps only mean anything under a
+      # sanitizer: without one, "no out-of-bounds read" is a claim, not a
+      # measurement.
+      - name: test
+        run: ctest --test-dir build --output-on-failure
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+
+  valgrind:
+    name: linux / valgrind
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build valgrind
+      - name: configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DABI_WERROR=ON
+      - name: build
+        run: cmake --build build
+      - name: memcheck
+        run: |
+          valgrind --error-exitcode=9 --leak-check=full \
+                   --show-leak-kinds=all --errors-for-leak-kinds=all -q \
+                   ./build/libabi/abicase_tests
+
+  cross-arch:
+    name: cross-arch / s390x (big-endian)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build gcc-s390x-linux-gnu qemu-user-static
+      # The M0 gate. A native integer serialized by accident is invisible on
+      # every little-endian machine and passes every test above; only running
+      # the code on a big-endian host finds it.
+      - name: cross-architecture check
+        run: ./tools/cross-arch-check.sh
+
+  windows-msvc:
+    name: windows / msvc
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - name: build
+        run: cmake --build build --config RelWithDebInfo
+      - name: test
+        run: ctest --test-dir build --build-config RelWithDebInfo --output-on-failure

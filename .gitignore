@@ -1,0 +1,20 @@
+# build
+build/
+build-*/
+target/
+*.o
+*.a
+*.exe
+*.pdb
+*.ilk
+compile_commands.json
+.cache/
+
+# test scratch
+libabi/tests/scratch/
+*.actual
+
+# editors
+.vscode/
+.idea/
+*.swp

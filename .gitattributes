@@ -1,0 +1,8 @@
+# Normalize on commit, check out LF everywhere.
+# Without this, core.autocrlf=true stores LF and checks out CRLF: formatters
+# flag every file and byte-exact fixture comparisons fail for no visible reason.
+* text=auto eol=lf
+
+# .abicase files are a binary container format: never touch their bytes.
+*.abicase binary
+*.abicase.golden binary
