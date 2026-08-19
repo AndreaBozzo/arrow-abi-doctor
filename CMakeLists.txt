@@ -31,6 +31,15 @@ if(ABI_SANITIZERS)
   target_link_options(abi_flags INTERFACE -fsanitize=address,undefined)
 endif()
 
+# Put the compile database where clangd looks for it, so the editor resolves
+# includes without every developer hand-configuring a build directory.
+if(CMAKE_EXPORT_COMPILE_COMMANDS)
+  file(CREATE_LINK
+    "${CMAKE_BINARY_DIR}/compile_commands.json"
+    "${CMAKE_SOURCE_DIR}/compile_commands.json"
+    COPY_ON_ERROR SYMBOLIC)
+endif()
+
 enable_testing()
 add_subdirectory(libabi)
 add_subdirectory(tools)

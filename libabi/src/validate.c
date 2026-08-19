@@ -199,7 +199,13 @@ static AbiStatus val_shapes_agree(AbiVal *v, const AbiSchemaNode *s,
                                   const AbiArrayNode *a, uint32_t depth) {
   uint32_t i;
 
-  if (depth > ABI_LIMIT_TREE_DEPTH) return ABI_OK; /* already reported */
+  /*
+   * No depth guard here on purpose: val_schema() and val_array() have both run
+   * to completion by now, so neither tree exceeds ABI_LIMIT_TREE_DEPTH and this
+   * recursion is bounded by theirs. A guard here could never fire, and a branch
+   * that can never be taken cannot be tested.
+   */
+  (void)depth;
   if (s->child_count != a->child_count) {
     return val_fail(v, ABI_ERR_CLASS_RULE,
                     "class %d requires matching tree shapes: schema has %lu "

@@ -286,7 +286,15 @@ AbiStatus abi_schema_set_metadata_present(AbiCase *c, AbiSchemaNode *n);
 AbiStatus abi_schema_add_child(AbiCase *c, AbiSchemaNode *parent,
                                AbiSchemaNode *child);
 void      abi_schema_set_dictionary(AbiSchemaNode *n, AbiSchemaNode *dict);
-/* Breaks child_count == n_children on purpose. Class B1/C only. */
+/*
+ * Breaks child_count == n_children on purpose. Class B1/C only.
+ *
+ * Call this AFTER every abi_schema_add_child() for the node: each add sets the
+ * declared count to the provided count, so adding a child afterwards silently
+ * repairs the inconsistency this exists to create -- turning a B1 case into a
+ * well-formed one that tests nothing. Class A and B2 reject the mismatch at
+ * encode time, so only B1 and C can lose it quietly.
+ */
 void      abi_schema_set_declared_children(AbiSchemaNode *n, uint32_t n_children);
 
 AbiArrayNode *abi_array_new(AbiCase *c);
@@ -299,7 +307,10 @@ AbiStatus abi_array_add_null_buffer(AbiCase *c, AbiArrayNode *n,
 AbiStatus abi_array_add_child(AbiCase *c, AbiArrayNode *parent,
                               AbiArrayNode *child);
 void      abi_array_set_dictionary(AbiArrayNode *n, AbiArrayNode *dict);
-/* Break the declared counts on purpose. Class B1/C only. */
+/*
+ * Break the declared counts on purpose. Class B1/C only.
+ * Call AFTER every add for the node -- see abi_schema_set_declared_children().
+ */
 void      abi_array_set_declared_buffers(AbiArrayNode *n, uint32_t n_buffers);
 void      abi_array_set_declared_children(AbiArrayNode *n, uint32_t n_children);
 
