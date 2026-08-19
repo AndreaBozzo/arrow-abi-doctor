@@ -63,8 +63,6 @@ typedef struct {
   uint8_t  kind;
   uint8_t  depth;       /* producer release-callback nesting at the time */
   uint8_t  by_consumer; /* entered at depth 0, i.e. called from outside */
-  uint8_t  is_root;
-  uint64_t arg;         /* bytes, for ALLOC and FREE */
   char     path[ABI_EVENT_PATH_MAX];
 } AbiEvent;
 

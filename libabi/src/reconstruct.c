@@ -37,8 +37,7 @@ typedef struct {
 
 typedef struct {
   AbiReconstruction *rec;
-  uint32_t           child_slots;  /* pointers actually allocated */
-  uint32_t           buffer_slots; /* pointers actually allocated */
+  uint32_t           child_slots; /* pointers actually allocated */
   char              *format_buf;
   char              *name_buf;
   char              *metadata_buf;
@@ -77,7 +76,7 @@ const char *abi_event_kind_str(AbiEventKind kind) {
 /* --- instrumented allocator ---------------------------------------------- */
 
 static void obs_event(AbiReconstruction *r, AbiEventKind kind, const char *path,
-                      uint8_t is_root, uint8_t by_consumer, uint64_t arg) {
+                      uint8_t by_consumer) {
   AbiEvent *e;
   if (r->obs.event_count >= ABI_MAX_EVENTS) {
     r->obs.events_dropped++;
@@ -88,8 +87,6 @@ static void obs_event(AbiReconstruction *r, AbiEventKind kind, const char *path,
   e->kind = (uint8_t)kind;
   e->depth = (uint8_t)r->obs.release_depth;
   e->by_consumer = by_consumer;
-  e->is_root = is_root;
-  e->arg = arg;
   memset(e->path, 0, sizeof(e->path));
   if (path) {
     size_t n = strlen(path);
@@ -168,9 +165,9 @@ static void schema_release(struct ArrowSchema *s) {
     /* The consumer must release only the base structure; the producer's own
        release is what walks into the children. */
     r->obs.violations++;
-    obs_event(r, ABI_EV_VIOLATION_CHILD_RELEASED_BY_CONSUMER, path, is_root, 1, 0);
+    obs_event(r, ABI_EV_VIOLATION_CHILD_RELEASED_BY_CONSUMER, path, 1);
   }
-  obs_event(r, ABI_EV_SCHEMA_RELEASE_ENTER, path, is_root, by_consumer, 0);
+  obs_event(r, ABI_EV_SCHEMA_RELEASE_ENTER, path, by_consumer);
   r->obs.release_depth++;
 
   for (i = 0; i < slots; i++) {
@@ -189,7 +186,7 @@ static void schema_release(struct ArrowSchema *s) {
   obs_free(r, p->metadata_buf);
 
   r->obs.release_depth--;
-  obs_event(r, ABI_EV_SCHEMA_RELEASE_EXIT, path, is_root, by_consumer, 0);
+  obs_event(r, ABI_EV_SCHEMA_RELEASE_EXIT, path, by_consumer);
 
   obs_free(r, p);
   s->format = NULL;
@@ -222,9 +219,9 @@ static void array_release(struct ArrowArray *a) {
 
   if (by_consumer && !is_root) {
     r->obs.violations++;
-    obs_event(r, ABI_EV_VIOLATION_CHILD_RELEASED_BY_CONSUMER, path, is_root, 1, 0);
+    obs_event(r, ABI_EV_VIOLATION_CHILD_RELEASED_BY_CONSUMER, path, 1);
   }
-  obs_event(r, ABI_EV_ARRAY_RELEASE_ENTER, path, is_root, by_consumer, 0);
+  obs_event(r, ABI_EV_ARRAY_RELEASE_ENTER, path, by_consumer);
   r->obs.release_depth++;
 
   for (i = 0; i < slots; i++) {
@@ -248,7 +245,7 @@ static void array_release(struct ArrowArray *a) {
   if (is_root) free_backing_allocations(r);
 
   r->obs.release_depth--;
-  obs_event(r, ABI_EV_ARRAY_RELEASE_EXIT, path, is_root, by_consumer, 0);
+  obs_event(r, ABI_EV_ARRAY_RELEASE_EXIT, path, by_consumer);
 
   obs_free(r, p);
   a->buffers = NULL;
@@ -441,7 +438,6 @@ static int build_array(AbiReconstruction *r, const AbiArrayNode *n,
   out->offset = n->offset;
 
   slots = max_u32(n->n_buffers, n->buffer_count);
-  p->buffer_slots = slots;
   if (slots) {
     out->buffers = (const void **)obs_alloc(r, slots * sizeof(const void *));
     if (!out->buffers) return 0;
@@ -537,7 +533,7 @@ AbiStatus abi_reconstruct(const AbiCase *c, AbiReconstruction **out,
     abi_reconstruction_free(r);
     return ABI_ERR_NO_MEMORY;
   }
-  obs_event(r, ABI_EV_SCHEMA_EXPORTED, "/", 1, 0, 0);
+  obs_event(r, ABI_EV_SCHEMA_EXPORTED, "/", 0);
 
   if (c->array) {
     if (!build_array(r, c->array, &r->array, "/", 1)) {
@@ -545,7 +541,7 @@ AbiStatus abi_reconstruct(const AbiCase *c, AbiReconstruction **out,
       return ABI_ERR_NO_MEMORY;
     }
     r->has_array = 1;
-    obs_event(r, ABI_EV_ARRAY_EXPORTED, "/", 1, 0, 0);
+    obs_event(r, ABI_EV_ARRAY_EXPORTED, "/", 0);
   }
 
   *out = r;
@@ -582,11 +578,11 @@ void abi_reconstruction_release_all(AbiReconstruction *r) {
    * cleanup has to be able to release first and read afterwards.
    */
   if (r->schema.release) {
-    obs_event(r, ABI_EV_HARNESS_RELEASED, "/", 1, 0, 0);
+    obs_event(r, ABI_EV_HARNESS_RELEASED, "/", 0);
     r->schema.release(&r->schema);
   }
   if (r->has_array && r->array.release) {
-    obs_event(r, ABI_EV_HARNESS_RELEASED, "/", 1, 0, 0);
+    obs_event(r, ABI_EV_HARNESS_RELEASED, "/", 0);
     r->array.release(&r->array);
   }
   free_backing_allocations(r);
