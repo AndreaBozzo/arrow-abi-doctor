@@ -67,7 +67,7 @@ big-endian — and runs it under `qemu-user-static` alongside the native build.
 | cross binary really is big-endian | `ELF 64-bit MSB executable, IBM S/390` |
 | full test suite on big-endian | 123 checks, 0 failures |
 | both hosts encode the same case to the same bytes | identical, 908 bytes |
-| case id agrees across hosts | `56e0420b2a105f4bb8ebdeb90fd21c39` |
+| case id agrees across hosts | `af3ded84db715f0957eec7188f9859ec` |
 | each host replays the other's file | ok, both directions |
 | structure and topology dumps agree | identical, 55 lines |
 | aliasing preserved | 1 aliased allocation, both hosts |
@@ -97,7 +97,7 @@ static inline void abi_store_u32(uint8_t *p, uint32_t v) {
 |---|---|
 | x86-64 test suite | **123 checks, 0 failures** — completely invisible |
 | s390x test suite | 91 checks, **17 failures** |
-| cross-host byte comparison | files differ at byte 9; case ids `56e0420b…` vs `abdec5a8…` |
+| cross-host byte comparison | files differ at byte 9 (the `bom` field); the two hosts produce different case ids |
 
 The two halves were checked separately: the byte-comparison step discriminates
 on its own, not only via the test-suite step that runs before it. The

@@ -76,6 +76,27 @@ jobs:
       - name: cross-architecture check
         run: ./tools/cross-arch-check.sh
 
+  m05-smoke:
+    name: m0.5 / dataprof + pyarrow smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The published wheel, not a source build: this job is a regression guard
+      # on the adapter and the reconstructor, not a claim about any particular
+      # dataprof commit. Findings get confirmed against a branch build by hand
+      # before they go anywhere near an issue.
+      - name: install consumers
+        run: python -m pip install --quiet dataprof pyarrow setuptools
+      - name: build the _abicase extension
+        run: python setup.py build_ext --inplace
+        working-directory: adapters/dataprof
+      - name: smoke
+        run: python run_smoke.py
+        working-directory: adapters/dataprof
+
   windows-msvc:
     name: windows / msvc
     runs-on: windows-latest

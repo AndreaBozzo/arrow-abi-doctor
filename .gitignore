@@ -18,3 +18,10 @@ libabi/tests/scratch/
 .vscode/
 .idea/
 *.swp
+
+# python adapter build products
+*.so
+*.pyd
+__pycache__/
+*.egg-info/
+.eggs/

@@ -56,8 +56,12 @@ if ! file "$cross_dir/tools/abicase" | grep -q 'MSB'; then
 fi
 echo "cross binary: $(file -b "$cross_dir/tools/abicase" | cut -d, -f1-2)"
 
-step "1. test suite on the big-endian host"
-qemu-s390x-static "$cross_dir/libabi/abicase_tests" | tail -3
+step "1. test suites on the big-endian host"
+qemu-s390x-static "$cross_dir/libabi/abicase_tests" | tail -2
+# Reconstruction matters here as much as the format does: the metadata wire form
+# is written in NATIVE byte order by design, so big-endian is the only place
+# that half of the encoder is actually exercised.
+qemu-s390x-static "$cross_dir/libabi/reconstruct_tests" | tail -2
 echo "ok"
 
 step "2. both hosts encode the same case to the same bytes"

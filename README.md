@@ -3,9 +3,11 @@
 An adversarial, structure-aware harness for the Arrow **C Data Interface** and
 **C Stream Interface**, built around portable, minimized reproducers.
 
-**Status: M0.** The `.abicase` container format is implemented and verified
-across three platforms including a big-endian one. There are no engine adapters
-and no lifecycle observer yet — those are M0.5 and M1.
+**Status: M0.5.** The `.abicase` container format is implemented and verified
+across three platforms including a big-endian one; cases reconstruct into real
+`ArrowSchema` / `ArrowArray` structures, and a first adapter feeds them to
+`dataprof` and `pyarrow` with the lifecycle observed. Differential pairs, a
+reference validator and worker isolation are M1.
 
 ---
 
@@ -119,15 +121,16 @@ stable identity for the case — usable for corpus deduplication and for citing 
 reproducer in an issue.
 
 Full specification: [docs/abicase-format.md](docs/abicase-format.md).
+Verification records: [M0](docs/m0-verification.md), [M0.5](docs/m0.5-smoke.md).
 
 ```
 $ abicase selftest
 fixture:  rich
 size:     908
-case_id:  56e0420b2a105f4bb8ebdeb90fd21c39
+case_id:  af3ded84db715f0957eec7188f9859ec
 
 $ abicase verify case.abicase
-ok   case.abicase: 908 bytes, class A, case_id 56e0420b2a105f4bb8ebdeb90fd21c39
+ok   case.abicase: 908 bytes, class A, case_id af3ded84db715f0957eec7188f9859ec
 
 $ abicase dump case.abicase     # structure and topology, host-independent
 ```
@@ -197,7 +200,8 @@ migration window is 2026 and does not stay open long.
   provenance. Byte-identical round trip on one host; logical, structural and
   topological equivalence verified between two architectures. ✅
 - **M0.5** — smoke. A `dataprof` adapter, an existing C Data / C Stream consumer
-  under our own control. Not a differential pair: a test of the instrument.
+  under our own control. Not a differential pair: a test of the instrument. ✅
+  ([record](docs/m0.5-smoke.md))
 - **M1** — first differential pair. Corpus A (v0 feature set) and B1, reference
   validator, Arrow C++ and DuckDB adapters, observer with instrumented
   allocator, event log, state machine and dual digest, worker isolation.
@@ -222,10 +226,11 @@ apparent. It only counts if the surface was defined beforehand.
 ## Layout
 
 ```
-libabi/       C -- the .abicase format, the case model, generators (M1)
+libabi/       C -- the .abicase format, the case model, reconstruction,
+              the lifecycle observer, generators (M1)
 tools/        the abicase CLI and the cross-architecture check
 refval/       nanoarrow binding, the reference validator          (M1)
-adapters/     per-engine consumers behind one stable C interface  (M0.5+)
+adapters/     per-engine consumers; dataprof lands first (M0.5)
 observer/     instrumented allocator, event log, state machine    (M1)
 coordinator/  Rust -- worker isolation, timeouts, artifacts       (M1)
 corpus/       a/ b1/ b2/ c/

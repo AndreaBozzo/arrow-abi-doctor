@@ -7,6 +7,7 @@ add_library(abi STATIC
   src/validate.c
   src/encode.c
   src/decode.c
+  src/reconstruct.c
 )
 target_include_directories(abi
   PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -26,4 +27,9 @@ target_include_directories(abicase_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
 target_compile_definitions(abicase_tests PRIVATE
   ABI_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
 
+add_executable(reconstruct_tests tests/test_reconstruct.c)
+target_link_libraries(reconstruct_tests PRIVATE abi abi_fixture abi_flags)
+target_include_directories(reconstruct_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 add_test(NAME abicase COMMAND abicase_tests)
+add_test(NAME reconstruct COMMAND reconstruct_tests)
