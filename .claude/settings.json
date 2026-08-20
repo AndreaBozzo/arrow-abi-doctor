@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(cmake:*)",
+      "Bash(ctest:*)",
+      "Bash(ninja:*)",
+      "Bash(ruff:*)",
+      "Bash(mypy:*)",
+      "Bash(clang-format:*)",
+      "Bash(valgrind:*)",
+      "Bash(./tools/cross-arch-check.sh)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)"
+    ],
+    "deny": [
+      "Edit(./libabi/tests/fixtures/*.abicase)",
+      "Write(./libabi/tests/fixtures/*.abicase)"
+    ]
+  }
+}
