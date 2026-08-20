@@ -201,7 +201,14 @@ migration window is 2026 and does not stay open long.
   topological equivalence verified between two architectures. ✅
 - **M0.5** — smoke. A `dataprof` adapter, an existing C Data / C Stream consumer
   under our own control. Not a differential pair: a test of the instrument. ✅
-  ([record](docs/m0.5-smoke.md))
+  ([record](docs/m0.5-smoke.md)) It turned up two defects in that consumer, both
+  filed and both since fixed upstream (dataprof
+  [#608](https://github.com/AndreaBozzo/dataprof/pull/608),
+  [#610](https://github.com/AndreaBozzo/dataprof/pull/610)). One of them — an
+  out-of-range dictionary index panicking across FFI — has no pyarrow-only
+  reproducer, because pyarrow refuses to construct the invalid array at all. It
+  took a C Data Interface producer to express it, which is the gap this project
+  is pointed at.
 - **M1** — first differential pair. Corpus A (v0 feature set) and B1, reference
   validator, Arrow C++ and DuckDB adapters, observer with instrumented
   allocator, event log, state machine and dual digest, worker isolation.

@@ -57,9 +57,7 @@ class Outcome:
 
     @property
     def harness_had_to_clean_up(self) -> bool:
-        return any(
-            e["kind"] == "HARNESS_RELEASED" for e in self.lifecycle.get("events", [])
-        )
+        return any(e["kind"] == "HARNESS_RELEASED" for e in self.lifecycle.get("events", []))
 
     @property
     def clean(self) -> bool:
@@ -142,7 +140,7 @@ def print_outcome(out: Outcome) -> None:
     elif not out.clean:
         verdict = "LEAK"
     else:
-        verdict = "ok  " if out.accepted else "--  " 
+        verdict = "ok  " if out.accepted else "--  "
     state = "accepted" if out.accepted else ("CRASHED" if out.crashed else "rejected")
     print(f"  [{verdict}] {out.consumer:<16} {state}")
     print(f"           {out.detail if out.accepted else out.error}")
@@ -172,9 +170,7 @@ def main() -> int:
         "files", nargs="*", help=".abicase files to run in addition to the fixtures"
     )
     parser.add_argument("-v", "--verbose", action="store_true")
-    parser.add_argument(
-        "--log", action="store_true", help="print the full lifecycle event log"
-    )
+    parser.add_argument("--log", action="store_true", help="print the full lifecycle event log")
     args = parser.parse_args()
 
     import dataprof
@@ -217,14 +213,25 @@ def main() -> int:
     # exists to establish.
     leaked = [o for o in outcomes if o.lifecycle.get("leaked")]
     violations = [o for o in outcomes if o.lifecycle.get("violations")]
+    crashed = [o for o in outcomes if o.crashed]
     smoke = [o for o in outcomes if o.case_name == "fixture:smoke"]
     smoke_accepted = [o for o in smoke if o.accepted]
 
     print("\n" + "-" * 74)
     print(
         f"{len(outcomes)} run(s), {sum(o.accepted for o in outcomes)} accepted | "
-        f"leaks: {len(leaked)} | lifecycle violations: {len(violations)}"
+        f"leaks: {len(leaked)} | lifecycle violations: {len(violations)} | "
+        f"consumer crashes: {len(crashed)}"
     )
+
+    # A consumer crash is a datum about the consumer, not a failure of this
+    # harness, so it does not flip the verdict below. It still gets its own line:
+    # buried in a nine-run table, the one outcome the project exists to find is
+    # the easiest to miss.
+    if crashed:
+        print("\nconsumer crashes (an uncatchable exception crossed the boundary):")
+        for o in crashed:
+            print(f"  {o.consumer} {o.case_name}: {o.error}")
 
     findings = []
     for case_name, _ in cases:
