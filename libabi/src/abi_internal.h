@@ -42,11 +42,11 @@ AbiArena *abi_arena_new(void);
 void      abi_arena_free(AbiArena *a);
 void     *abi_arena_alloc(AbiArena *a, size_t size, size_t align);
 void     *abi_arena_calloc(AbiArena *a, size_t size, size_t align);
-void     *abi_arena_dup(AbiArena *a, const void *src, size_t size, size_t align);
-size_t    abi_arena_bytes_used(const AbiArena *a);
+void  *abi_arena_dup(AbiArena *a, const void *src, size_t size, size_t align);
+size_t abi_arena_bytes_used(const AbiArena *a);
 
 #define ABI_ARENA_NEW(a, T) ((T *)abi_arena_calloc((a), sizeof(T), _Alignof(T)))
-#define ABI_ARENA_ARRAY(a, T, n) \
+#define ABI_ARENA_ARRAY(a, T, n)                                               \
   ((T *)abi_arena_calloc((a), sizeof(T) * (size_t)(n), _Alignof(T)))
 
 /* Copies into the arena; NULL src with size 0 yields an empty AbiBytes. */
@@ -78,7 +78,8 @@ static inline void abi_store_u32(uint8_t *p, uint32_t v) {
 
 static inline void abi_store_u64(uint8_t *p, uint64_t v) {
   int i;
-  for (i = 0; i < 8; i++) p[i] = (uint8_t)((v >> (8 * i)) & 0xFFu);
+  for (i = 0; i < 8; i++)
+    p[i] = (uint8_t)((v >> (8 * i)) & 0xFFu);
 }
 
 static inline uint16_t abi_load_u16(const uint8_t *p) {
@@ -93,7 +94,8 @@ static inline uint32_t abi_load_u32(const uint8_t *p) {
 static inline uint64_t abi_load_u64(const uint8_t *p) {
   uint64_t v = 0;
   int      i;
-  for (i = 7; i >= 0; i--) v = (v << 8) | (uint64_t)p[i];
+  for (i = 7; i >= 0; i--)
+    v = (v << 8) | (uint64_t)p[i];
   return v;
 }
 
@@ -153,7 +155,8 @@ typedef struct {
 void abi_cur_init(AbiCur *c, const uint8_t *data, size_t size);
 
 /* Always returns 0, so callers can `return abi_cur_fail(...)`. */
-int abi_cur_fail(AbiCur *c, AbiStatus status, size_t offset, const char *fmt, ...);
+int abi_cur_fail(AbiCur *c, AbiStatus status, size_t offset, const char *fmt,
+                 ...);
 
 int      abi_cur_need(AbiCur *c, uint64_t n);
 uint8_t  abi_cur_u8(AbiCur *c);
@@ -162,11 +165,11 @@ uint32_t abi_cur_u32(AbiCur *c);
 uint64_t abi_cur_u64(AbiCur *c);
 int64_t  abi_cur_i64(AbiCur *c);
 /* Borrows into the input buffer; copy before the input goes away. */
-int      abi_cur_raw(AbiCur *c, uint64_t n, const uint8_t **out);
+int abi_cur_raw(AbiCur *c, uint64_t n, const uint8_t **out);
 /* u32 length + payload, length-limited, copied into `arena`. */
-int      abi_cur_bytes(AbiCur *c, AbiArena *arena, AbiBytes *out);
-int      abi_cur_zeros(AbiCur *c, size_t n, const char *field);
-int      abi_cur_bool(AbiCur *c, const char *field, uint8_t *out);
+int abi_cur_bytes(AbiCur *c, AbiArena *arena, AbiBytes *out);
+int abi_cur_zeros(AbiCur *c, size_t n, const char *field);
+int abi_cur_bool(AbiCur *c, const char *field, uint8_t *out);
 
 /* --- allocation payload encoding (fill.c, format 5.2) -------------------- */
 

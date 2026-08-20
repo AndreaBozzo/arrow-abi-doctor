@@ -21,30 +21,30 @@ static int         g_checks = 0;
 static int         g_fails = 0;
 static const char *g_test = "?";
 
-#define CHECK(cond, msg)                                                  \
-  do {                                                                    \
-    g_checks++;                                                           \
-    if (!(cond)) {                                                        \
-      g_fails++;                                                          \
-      fprintf(stderr, "FAIL [%s] %s:%d: %s\n", g_test, __FILE__, __LINE__, \
-              (msg));                                                     \
-    }                                                                     \
+#define CHECK(cond, msg)                                                       \
+  do {                                                                         \
+    g_checks++;                                                                \
+    if (!(cond)) {                                                             \
+      g_fails++;                                                               \
+      fprintf(stderr, "FAIL [%s] %s:%d: %s\n", g_test, __FILE__, __LINE__,     \
+              (msg));                                                          \
+    }                                                                          \
   } while (0)
 
-#define CHECKF(cond, fmt, ...)                                             \
-  do {                                                                     \
-    g_checks++;                                                            \
-    if (!(cond)) {                                                         \
-      g_fails++;                                                           \
-      fprintf(stderr, "FAIL [%s] %s:%d: " fmt "\n", g_test, __FILE__,      \
-              __LINE__, __VA_ARGS__);                                      \
-    }                                                                      \
+#define CHECKF(cond, fmt, ...)                                                 \
+  do {                                                                         \
+    g_checks++;                                                                \
+    if (!(cond)) {                                                             \
+      g_fails++;                                                               \
+      fprintf(stderr, "FAIL [%s] %s:%d: " fmt "\n", g_test, __FILE__,          \
+              __LINE__, __VA_ARGS__);                                          \
+    }                                                                          \
   } while (0)
 
-#define RUN(fn)                    \
-  do {                             \
-    g_test = #fn;                  \
-    fn();                          \
+#define RUN(fn)                                                                \
+  do {                                                                         \
+    g_test = #fn;                                                              \
+    fn();                                                                      \
   } while (0)
 
 /* --- primitives ---------------------------------------------------------- */
@@ -72,7 +72,8 @@ static void test_endian_primitives(void) {
   CHECK(abi_i64_to_u64(-1) == 0xFFFFFFFFFFFFFFFFull, "-1 maps to all ones");
   CHECK(abi_u64_to_i64(0xFFFFFFFFFFFFFFFFull) == -1, "all ones maps to -1");
   CHECK(abi_i64_to_u64(INT64_MIN) == 0x8000000000000000ull, "INT64_MIN maps");
-  CHECK(abi_u64_to_i64(0x8000000000000000ull) == INT64_MIN, "INT64_MIN inverts");
+  CHECK(abi_u64_to_i64(0x8000000000000000ull) == INT64_MIN,
+        "INT64_MIN inverts");
   CHECK(abi_u64_to_i64(abi_i64_to_u64(-1234567890123LL)) == -1234567890123LL,
         "negative round trip");
 }
@@ -97,7 +98,8 @@ static void test_sha256_vectors(void) {
   {
     uint8_t big[200];
     size_t  i;
-    for (i = 0; i < sizeof(big); i++) big[i] = (uint8_t)(i & 0xFF);
+    for (i = 0; i < sizeof(big); i++)
+      big[i] = (uint8_t)(i & 0xFF);
     abi_sha256(big, sizeof(big), d);
     abi_hex(d, 32, hex);
     /* self-consistency: streaming in odd chunks must equal the one-shot */
@@ -131,20 +133,23 @@ static void check_fill(const uint8_t *b, uint64_t n, AbiFill want,
 }
 
 static void test_fill_choose(void) {
-  uint8_t zeros[64];
-  uint8_t ones[16];
-  uint8_t alt[16];
-  uint8_t raw[8];
-  uint8_t runs[100];
+  uint8_t  zeros[64];
+  uint8_t  ones[16];
+  uint8_t  alt[16];
+  uint8_t  raw[8];
+  uint8_t  runs[100];
   uint64_t payload = 0;
   uint32_t period = 0, run_count = 0;
-  size_t  i;
+  size_t   i;
 
   memset(zeros, 0, sizeof(zeros));
   memset(ones, 0xFF, sizeof(ones));
-  for (i = 0; i < sizeof(alt); i++) alt[i] = (uint8_t)((i % 2) ? 0xCD : 0xAB);
-  for (i = 0; i < sizeof(raw); i++) raw[i] = (uint8_t)(0x10 + i * 37);
-  for (i = 0; i < sizeof(runs); i++) runs[i] = (uint8_t)(i < 50 ? 0x01 : 0x02);
+  for (i = 0; i < sizeof(alt); i++)
+    alt[i] = (uint8_t)((i % 2) ? 0xCD : 0xAB);
+  for (i = 0; i < sizeof(raw); i++)
+    raw[i] = (uint8_t)(0x10 + i * 37);
+  for (i = 0; i < sizeof(runs); i++)
+    runs[i] = (uint8_t)(i < 50 ? 0x01 : 0x02);
 
   check_fill(NULL, 0, ABI_FILL_ZERO, "empty allocation");
   check_fill(zeros, sizeof(zeros), ABI_FILL_ZERO, "all zero");
@@ -249,11 +254,11 @@ static void test_size_budget(void) {
 /* --- topology ------------------------------------------------------------ */
 
 static void test_alias_preserved(void) {
-  AbiCase  *c = abi_fixture_rich();
-  AbiCase  *back = NULL;
-  uint8_t  *b = NULL;
-  size_t    n = 0;
-  AbiError  err;
+  AbiCase *c = abi_fixture_rich();
+  AbiCase *back = NULL;
+  uint8_t *b = NULL;
+  size_t   n = 0;
+  AbiError err;
 
   if (!c) return;
   if (abi_case_encode(c, &b, &n) != ABI_OK) {
@@ -290,9 +295,8 @@ static void test_alias_preserved(void) {
     CHECKF(back->allocations[back->array->children[1]->buffers[1].allocation_id]
                    .alignment == 64,
            "allocation alignment must survive, got %lu",
-           (unsigned long)back->allocations[back->array->children[1]
-                                                ->buffers[1]
-                                                .allocation_id]
+           (unsigned long)back
+               ->allocations[back->array->children[1]->buffers[1].allocation_id]
                .alignment);
 
     /* NULL buffer stays NULL, and is not a zero-length allocation */
@@ -361,16 +365,37 @@ static void test_case_id(void) {
 
 typedef void (*MutateFn)(uint8_t *b, size_t n);
 
-static void mut_magic(uint8_t *b, size_t n) { (void)n; b[0] = 'X'; }
-static void mut_version(uint8_t *b, size_t n) { (void)n; abi_store_u16(b + 4, 2); }
-static void mut_header_size(uint8_t *b, size_t n) { (void)n; abi_store_u16(b + 6, 48); }
-static void mut_bom(uint8_t *b, size_t n) { (void)n; abi_store_u32(b + 8, 0xFFFE0000u); }
-static void mut_class(uint8_t *b, size_t n) { (void)n; b[12] = 9; }
-static void mut_reserved(uint8_t *b, size_t n) { (void)n; b[13] = 1; }
+static void mut_magic(uint8_t *b, size_t n) {
+  (void)n;
+  b[0] = 'X';
+}
+static void mut_version(uint8_t *b, size_t n) {
+  (void)n;
+  abi_store_u16(b + 4, 2);
+}
+static void mut_header_size(uint8_t *b, size_t n) {
+  (void)n;
+  abi_store_u16(b + 6, 48);
+}
+static void mut_bom(uint8_t *b, size_t n) {
+  (void)n;
+  abi_store_u32(b + 8, 0xFFFE0000u);
+}
+static void mut_class(uint8_t *b, size_t n) {
+  (void)n;
+  b[12] = 9;
+}
+static void mut_reserved(uint8_t *b, size_t n) {
+  (void)n;
+  b[13] = 1;
+}
 static void mut_total_size(uint8_t *b, size_t n) {
   abi_store_u32(b + 20, (uint32_t)n - 1);
 }
-static void mut_payload_id(uint8_t *b, size_t n) { (void)n; b[24] ^= 0x01u; }
+static void mut_payload_id(uint8_t *b, size_t n) {
+  (void)n;
+  b[24] ^= 0x01u;
+}
 static void mut_payload(uint8_t *b, size_t n) { b[n - 1] ^= 0x80u; }
 static void mut_section_count(uint8_t *b, size_t n) {
   (void)n;
@@ -405,13 +430,15 @@ static void test_rejects_malformed_header(void) {
   expect_reject(mut_magic, ABI_ERR_BAD_MAGIC, "bad magic");
   expect_reject(mut_version, ABI_ERR_BAD_VERSION, "unsupported version");
   expect_reject(mut_header_size, ABI_ERR_BAD_VERSION, "wrong header size");
-  expect_reject(mut_bom, ABI_ERR_BAD_BYTE_ORDER, "big-endian byte order marker");
+  expect_reject(mut_bom, ABI_ERR_BAD_BYTE_ORDER,
+                "big-endian byte order marker");
   expect_reject(mut_class, ABI_ERR_BAD_ENUM, "unknown class");
   expect_reject(mut_reserved, ABI_ERR_NOT_CANONICAL, "non-zero reserved byte");
   expect_reject(mut_total_size, ABI_ERR_TRAILING_BYTES, "short total_size");
   expect_reject(mut_payload_id, ABI_ERR_DIGEST_MISMATCH, "corrupt payload id");
   expect_reject(mut_payload, ABI_ERR_DIGEST_MISMATCH, "corrupt payload");
-  expect_reject(mut_section_count, ABI_ERR_NOT_CANONICAL, "absurd section count");
+  expect_reject(mut_section_count, ABI_ERR_NOT_CANONICAL,
+                "absurd section count");
 }
 
 /*
@@ -445,7 +472,8 @@ static void test_rejects_non_minimal_fill(void) {
     uint32_t sec_size = abi_load_u32(b + pos + 4);
     if (tag == ABICASE_TAG_ALLOCATIONS) {
       sec_at = pos;
-      /* payload: alloc_count u32, then size_bytes u64, alignment u32, fill u8 */
+      /* payload: alloc_count u32, then size_bytes u64, alignment u32, fill u8
+       */
       fill_at = pos + ABICASE_SECTION_HEADER_SIZE + 4 + 8 + 4;
       break;
     }
@@ -469,7 +497,7 @@ static void test_rejects_non_minimal_fill(void) {
      * decoder checks before canonicality is therefore correct, and the only
      * remaining defect is that the encoding is not the minimal one.
      */
-    const size_t old_payload = 4u + 1u;  /* period u32 + one pattern byte */
+    const size_t old_payload = 4u + 1u; /* period u32 + one pattern byte */
     const size_t new_payload = sizeof(ones);
     const size_t tail_at = fill_at + 4 + old_payload;
     size_t       flen = n - old_payload + new_payload;
@@ -536,8 +564,7 @@ static void test_truncation_sweep(void) {
     }
   }
   CHECKF(accepted == 0, "%d truncated prefix(es) were accepted", accepted);
-  printf("  truncation sweep: %llu prefixes rejected\n",
-         (unsigned long long)n);
+  printf("  truncation sweep: %llu prefixes rejected\n", (unsigned long long)n);
   abi_free(b);
   abi_case_free(c);
 }
@@ -716,9 +743,10 @@ static void test_containment_invariant(void) {
       abi_array_add_buffer(ok, oa, ABI_ROLE_DATA, oid, 0, 4);
       abi_case_set_array(ok, oa);
       st = abi_case_validate(ok, NULL);
-      CHECKF(st == ABI_OK,
-             "a short buffer with an overlong length is a valid B1 case, got %s",
-             abi_status_str(st));
+      CHECKF(
+          st == ABI_OK,
+          "a short buffer with an overlong length is a valid B1 case, got %s",
+          abi_status_str(st));
       roundtrip_case(ok, "b1-short-buffer");
       abi_case_free(ok);
     }
@@ -731,7 +759,7 @@ static void test_schema_only_case(void) {
   AbiCase  *c = abi_case_new(ABI_CLASS_B1);
   AbiStatus st;
   if (!c) return;
-  abi_case_set_schema(c, abi_schema_new(c, "w:"));  /* truncated parameter */
+  abi_case_set_schema(c, abi_schema_new(c, "w:")); /* truncated parameter */
   abi_case_set_expected(c, ABI_VALIDATE_MINIMAL, ABI_EXPECT_REJECT,
                         "C Data Interface: format strings",
                         "fixed-size binary with no width");
@@ -765,7 +793,8 @@ static void test_golden_fixture(void) {
     CHECK(abi_case_write_file(c, path) == ABI_OK, "golden fixture written");
     printf("  golden fixture regenerated: %s\n", path);
   } else if (abi_read_file(path, &disk, &n_disk) == ABI_OK) {
-    CHECKF(n_disk == n_mine, "golden fixture is %llu bytes, encoder produced %llu",
+    CHECKF(n_disk == n_mine,
+           "golden fixture is %llu bytes, encoder produced %llu",
            (unsigned long long)n_disk, (unsigned long long)n_mine);
     CHECK(n_disk == n_mine && memcmp(disk, mine, n_mine) == 0,
           "encoder output drifted from the golden fixture");
@@ -781,7 +810,8 @@ static void test_golden_fixture(void) {
       if (back) abi_case_free(back);
     }
   } else {
-    CHECK(0, "golden fixture missing; run with ABI_UPDATE_GOLDEN=1 to create it");
+    CHECK(0,
+          "golden fixture missing; run with ABI_UPDATE_GOLDEN=1 to create it");
   }
 
   abi_free(mine);

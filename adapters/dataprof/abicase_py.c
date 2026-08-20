@@ -30,10 +30,9 @@
 /* --- the case object ------------------------------------------------------ */
 
 typedef struct {
-  PyObject_HEAD
-  AbiReconstruction *rec;
-  int                array_taken;  /* __arrow_c_array__ moved the array out */
-  int                schema_taken; /* __arrow_c_schema__ moved the schema out */
+  PyObject_HEAD AbiReconstruction *rec;
+  int array_taken;  /* __arrow_c_array__ moved the array out */
+  int schema_taken; /* __arrow_c_schema__ moved the schema out */
 } AbiCaseObject;
 
 /*
@@ -65,7 +64,8 @@ static void schema_capsule_destructor(PyObject *capsule) {
 }
 
 static void array_capsule_destructor(PyObject *capsule) {
-  ArrayCapsule *p = (ArrayCapsule *)PyCapsule_GetPointer(capsule, "arrow_array");
+  ArrayCapsule *p =
+      (ArrayCapsule *)PyCapsule_GetPointer(capsule, "arrow_array");
   if (p == NULL) {
     PyErr_Clear();
     return;
@@ -139,7 +139,8 @@ static PyObject *make_array_capsule(AbiCaseObject *self) {
 
 /* --- the Arrow PyCapsule interface ---------------------------------------- */
 
-static PyObject *AbiCase_arrow_c_schema(PyObject *selfobj, PyObject *Py_UNUSED(a)) {
+static PyObject *AbiCase_arrow_c_schema(PyObject *selfobj,
+                                        PyObject *Py_UNUSED(a)) {
   return make_schema_capsule((AbiCaseObject *)selfobj);
 }
 
@@ -169,7 +170,8 @@ static PyObject *AbiCase_arrow_c_array(PyObject *selfobj, PyObject *args) {
   return tuple;
 }
 
-/* --- lifecycle reporting --------------------------------------------------- */
+/* --- lifecycle reporting ---------------------------------------------------
+ */
 
 static PyObject *event_to_dict(const AbiEvent *e) {
   return Py_BuildValue("{s:I,s:s,s:i,s:O,s:s}", "seq", (unsigned int)e->seq,
@@ -219,7 +221,8 @@ static PyObject *AbiCase_lifecycle(PyObject *selfobj, PyObject *Py_UNUSED(a)) {
  * lifecycle report, so that "the consumer released it" and "we cleaned up after
  * a consumer that did not" stay distinguishable in the log.
  */
-static PyObject *AbiCase_release_all(PyObject *selfobj, PyObject *Py_UNUSED(a)) {
+static PyObject *AbiCase_release_all(PyObject *selfobj,
+                                     PyObject *Py_UNUSED(a)) {
   abi_reconstruction_release_all(((AbiCaseObject *)selfobj)->rec);
   Py_RETURN_NONE;
 }
@@ -246,12 +249,14 @@ static PyTypeObject AbiCaseType = {
     PyVarObject_HEAD_INIT(NULL, 0).tp_name = "_abicase.Case",
     .tp_basicsize = sizeof(AbiCaseObject),
     .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_doc = "A reconstructed .abicase, exported as an Arrow PyCapsule producer.",
+    .tp_doc =
+        "A reconstructed .abicase, exported as an Arrow PyCapsule producer.",
     .tp_methods = AbiCase_methods,
     .tp_dealloc = AbiCase_dealloc,
 };
 
-/* --- module functions ------------------------------------------------------ */
+/* --- module functions ------------------------------------------------------
+ */
 
 static PyObject *wrap_case(AbiCase *c) {
   AbiCaseObject     *obj;
@@ -315,17 +320,26 @@ static PyObject *mod_bad_dict_index(PyObject *Py_UNUSED(m),
 }
 
 static PyMethodDef module_methods[] = {
-    {"load", mod_load, METH_VARARGS, "Load a .abicase file and reconstruct it."},
-    {"smoke", mod_smoke, METH_NOARGS, "The plainly-valid struct<int32, utf8> fixture."},
+    {"load", mod_load, METH_VARARGS,
+     "Load a .abicase file and reconstruct it."},
+    {"smoke", mod_smoke, METH_NOARGS,
+     "The plainly-valid struct<int32, utf8> fixture."},
     {"rich", mod_rich, METH_NOARGS, "The full-feature fixture."},
     {"bad_dict_index", mod_bad_dict_index, METH_NOARGS,
      "Class B1: a dictionary index out of range for its dictionary."},
     {NULL, NULL, 0, NULL}};
 
 static struct PyModuleDef abicase_module = {
-    PyModuleDef_HEAD_INIT, "_abicase",
-    "Present a .abicase to a Python Arrow consumer via the PyCapsule interface.",
-    -1, module_methods, NULL, NULL, NULL, NULL};
+    PyModuleDef_HEAD_INIT,
+    "_abicase",
+    "Present a .abicase to a Python Arrow consumer via the PyCapsule "
+    "interface.",
+    -1,
+    module_methods,
+    NULL,
+    NULL,
+    NULL,
+    NULL};
 
 PyMODINIT_FUNC PyInit__abicase(void) {
   PyObject *m;

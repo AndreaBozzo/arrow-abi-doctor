@@ -148,12 +148,12 @@ AbiStatus abi_case_encode(const AbiCase *c, uint8_t **out_data,
   abi_buf_init(&payload);
   abi_buf_init(&body);
 
-#define ABI_EMIT(tag, expr)                                    \
-  do {                                                         \
-    body.size = 0;                                             \
-    body.failed = 0;                                           \
-    ok = ok && (expr);                                         \
-    ok = ok && enc_section(&payload, (tag), &body, &section_count); \
+#define ABI_EMIT(tag, expr)                                                    \
+  do {                                                                         \
+    body.size = 0;                                                             \
+    body.failed = 0;                                                           \
+    ok = ok && (expr);                                                         \
+    ok = ok && enc_section(&payload, (tag), &body, &section_count);            \
   } while (0)
 
   ABI_EMIT(ABICASE_TAG_PROVENANCE, enc_provenance(&body, c));
@@ -197,7 +197,8 @@ AbiStatus abi_case_encode(const AbiCase *c, uint8_t **out_data,
   abi_store_u32(out + 16, section_count);
   abi_store_u32(out + 20, (uint32_t)total);
 
-  if (payload.size) memcpy(out + ABICASE_HEADER_SIZE, payload.data, payload.size);
+  if (payload.size)
+    memcpy(out + ABICASE_HEADER_SIZE, payload.data, payload.size);
   abi_sha256(out + ABICASE_HEADER_SIZE, payload.size, digest);
   memcpy(out + 24, digest, ABICASE_ID_BYTES);
 
@@ -225,7 +226,8 @@ AbiStatus abi_case_id(const AbiCase *c, char *out_hex) {
   return ABI_OK;
 }
 
-AbiStatus abi_case_id_of_bytes(const uint8_t *data, size_t size, char *out_hex) {
+AbiStatus abi_case_id_of_bytes(const uint8_t *data, size_t size,
+                               char *out_hex) {
   if (!data || !out_hex) return ABI_ERR_INVALID_ARGUMENT;
   if (size < ABICASE_HEADER_SIZE) return ABI_ERR_TRUNCATED;
   if (data[0] != ABICASE_MAGIC0 || data[1] != ABICASE_MAGIC1 ||

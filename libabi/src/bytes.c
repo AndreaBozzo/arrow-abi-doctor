@@ -81,7 +81,9 @@ int abi_buf_u64(AbiBuf *b, uint64_t v) {
   return 1;
 }
 
-int abi_buf_i64(AbiBuf *b, int64_t v) { return abi_buf_u64(b, abi_i64_to_u64(v)); }
+int abi_buf_i64(AbiBuf *b, int64_t v) {
+  return abi_buf_u64(b, abi_i64_to_u64(v));
+}
 
 int abi_buf_zeros(AbiBuf *b, size_t n) {
   if (!abi_buf_reserve(b, n)) return 0;
@@ -107,7 +109,8 @@ void abi_cur_init(AbiCur *c, const uint8_t *data, size_t size) {
   c->err.message[0] = '\0';
 }
 
-int abi_cur_fail(AbiCur *c, AbiStatus status, size_t offset, const char *fmt, ...) {
+int abi_cur_fail(AbiCur *c, AbiStatus status, size_t offset, const char *fmt,
+                 ...) {
   va_list ap;
   if (!c->failed) { /* keep the first failure: it is the informative one */
     c->failed = 1;
@@ -123,10 +126,9 @@ int abi_cur_fail(AbiCur *c, AbiStatus status, size_t offset, const char *fmt, ..
 int abi_cur_need(AbiCur *c, uint64_t n) {
   if (c->failed) return 0;
   if (n > (uint64_t)(c->size - c->pos)) {
-    return abi_cur_fail(c, ABI_ERR_TRUNCATED, c->pos,
-                        "need %llu byte(s), %llu remaining",
-                        (unsigned long long)n,
-                        (unsigned long long)(c->size - c->pos));
+    return abi_cur_fail(
+        c, ABI_ERR_TRUNCATED, c->pos, "need %llu byte(s), %llu remaining",
+        (unsigned long long)n, (unsigned long long)(c->size - c->pos));
   }
   return 1;
 }

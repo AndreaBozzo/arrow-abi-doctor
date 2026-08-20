@@ -59,16 +59,16 @@ struct AbiReconstruction {
 
 const char *abi_event_kind_str(AbiEventKind kind) {
   switch (kind) {
-    case ABI_EV_SCHEMA_EXPORTED:       return "SCHEMA_EXPORTED";
-    case ABI_EV_ARRAY_EXPORTED:        return "ARRAY_EXPORTED";
-    case ABI_EV_SCHEMA_RELEASE_ENTER:  return "SCHEMA_RELEASE_ENTER";
-    case ABI_EV_SCHEMA_RELEASE_EXIT:   return "SCHEMA_RELEASE_EXIT";
-    case ABI_EV_ARRAY_RELEASE_ENTER:   return "ARRAY_RELEASE_ENTER";
-    case ABI_EV_ARRAY_RELEASE_EXIT:    return "ARRAY_RELEASE_EXIT";
-    case ABI_EV_VIOLATION_CHILD_RELEASED_BY_CONSUMER:
-      return "VIOLATION_CHILD_RELEASED_BY_CONSUMER";
-    case ABI_EV_HARNESS_RELEASED:      return "HARNESS_RELEASED";
-    case ABI_EV__MAX:                  break;
+  case ABI_EV_SCHEMA_EXPORTED: return "SCHEMA_EXPORTED";
+  case ABI_EV_ARRAY_EXPORTED: return "ARRAY_EXPORTED";
+  case ABI_EV_SCHEMA_RELEASE_ENTER: return "SCHEMA_RELEASE_ENTER";
+  case ABI_EV_SCHEMA_RELEASE_EXIT: return "SCHEMA_RELEASE_EXIT";
+  case ABI_EV_ARRAY_RELEASE_ENTER: return "ARRAY_RELEASE_ENTER";
+  case ABI_EV_ARRAY_RELEASE_EXIT: return "ARRAY_RELEASE_EXIT";
+  case ABI_EV_VIOLATION_CHILD_RELEASED_BY_CONSUMER:
+    return "VIOLATION_CHILD_RELEASED_BY_CONSUMER";
+  case ABI_EV_HARNESS_RELEASED: return "HARNESS_RELEASED";
+  case ABI_EV__MAX: break;
   }
   return "?";
 }
@@ -95,7 +95,8 @@ static void obs_event(AbiReconstruction *r, AbiEventKind kind, const char *path,
   }
 }
 
-static void *obs_alloc_aligned(AbiReconstruction *r, size_t size, size_t align) {
+static void *obs_alloc_aligned(AbiReconstruction *r, size_t size,
+                               size_t align) {
   size_t      total;
   uint8_t    *base;
   uintptr_t   start, aligned;
@@ -201,7 +202,8 @@ static void schema_release(struct ArrowSchema *s) {
 static void free_backing_allocations(AbiReconstruction *r) {
   uint32_t i;
   if (r->buffers_freed) return;
-  for (i = 0; i < r->alloc_count; i++) obs_free(r, r->alloc_data[i]);
+  for (i = 0; i < r->alloc_count; i++)
+    obs_free(r, r->alloc_data[i]);
   obs_free(r, r->alloc_data);
   r->alloc_data = NULL;
   r->buffers_freed = 1;
@@ -261,7 +263,8 @@ static void child_path(char *dst, size_t dst_size, const char *parent,
                        const char *leaf) {
   size_t n = strlen(parent);
   if (n + strlen(leaf) + 1 >= dst_size) {
-    /* Paths are report cosmetics; a deep tree truncates rather than overflows. */
+    /* Paths are report cosmetics; a deep tree truncates rather than overflows.
+     */
     memcpy(dst, parent, dst_size - 1);
     dst[dst_size - 1] = '\0';
     return;
@@ -391,8 +394,8 @@ static int build_schema(AbiReconstruction *r, const AbiSchemaNode *n,
   slots = max_u32(n->n_children, n->child_count);
   p->child_slots = slots;
   if (slots) {
-    out->children =
-        (struct ArrowSchema **)obs_alloc(r, slots * sizeof(struct ArrowSchema *));
+    out->children = (struct ArrowSchema **)obs_alloc(
+        r, slots * sizeof(struct ArrowSchema *));
     if (!out->children) return 0;
   }
   for (i = 0; i < n->child_count; i++) {
@@ -406,7 +409,8 @@ static int build_schema(AbiReconstruction *r, const AbiSchemaNode *n,
     child_path(cpath, sizeof(cpath), path, leaf);
     if (!build_schema(r, n->children[i], ch, cpath, 0)) return 0;
   }
-  out->n_children = (int64_t)n->n_children; /* declared: may be a deliberate lie */
+  out->n_children =
+      (int64_t)n->n_children; /* declared: may be a deliberate lie */
 
   if (n->dictionary) {
     char                cpath[ABI_EVENT_PATH_MAX];
@@ -450,7 +454,8 @@ static int build_array(AbiReconstruction *r, const AbiArrayNode *n,
     }
     /* Views into one shared allocation: aliasing is a real address match. */
     out->buffers[i] =
-        (const void *)((uint8_t *)r->alloc_data[v->allocation_id] + v->byte_offset);
+        (const void *)((uint8_t *)r->alloc_data[v->allocation_id] +
+                       v->byte_offset);
   }
   out->n_buffers = (int64_t)n->n_buffers;
 
@@ -518,8 +523,8 @@ AbiStatus abi_reconstruct(const AbiCase *c, AbiReconstruction **out,
        * weakening this, so that "misaligned" means exactly what the case says
        * and not whatever the platform allocator happened to return.
        */
-      void *mem = obs_alloc_aligned(r, (size_t)a->size_bytes ? (size_t)a->size_bytes : 1,
-                                    a->alignment);
+      void *mem = obs_alloc_aligned(
+          r, (size_t)a->size_bytes ? (size_t)a->size_bytes : 1, a->alignment);
       if (!mem) {
         abi_reconstruction_free(r);
         return ABI_ERR_NO_MEMORY;
@@ -608,8 +613,9 @@ void abi_reconstruction_print_log(const AbiReconstruction *r, FILE *out) {
             e->path[0] ? e->path : "-",
             e->by_consumer ? "  <- entered by consumer" : "");
   }
-  fprintf(out, "  ALLOC_DELTA  %lld bytes / %lld blocks\n",
-          (long long)(r->obs.alloc.bytes_allocated - r->obs.alloc.bytes_freed),
-          (long long)(r->obs.alloc.blocks_allocated - r->obs.alloc.blocks_freed));
+  fprintf(
+      out, "  ALLOC_DELTA  %lld bytes / %lld blocks\n",
+      (long long)(r->obs.alloc.bytes_allocated - r->obs.alloc.bytes_freed),
+      (long long)(r->obs.alloc.blocks_allocated - r->obs.alloc.blocks_freed));
   fprintf(out, "  violations:  %lu\n", (unsigned long)r->obs.violations);
 }

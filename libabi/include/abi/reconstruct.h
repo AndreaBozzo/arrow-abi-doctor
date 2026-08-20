@@ -6,12 +6,12 @@
  * M0 produced a portable description of a case. This turns one back into actual
  * C Data Interface structures on this host: aligned allocations, buffer views
  * that genuinely alias where the case says they alias, metadata re-encoded into
- * Arrow's native-endian wire form, and release callbacks that behave the way the
- * specification says a producer's must.
+ * Arrow's native-endian wire form, and release callbacks that behave the way
+ * the specification says a producer's must.
  *
  * The reconstruction owns everything it builds and outlives the structures it
- * exports, so the event log and the allocation counters are still readable after
- * the consumer has released -- which is the whole point of having them.
+ * exports, so the event log and the allocation counters are still readable
+ * after the consumer has released -- which is the whole point of having them.
  */
 #ifndef ABI_RECONSTRUCT_H
 #define ABI_RECONSTRUCT_H
@@ -99,8 +99,8 @@ AbiStatus abi_reconstruct(const AbiCase *c, AbiReconstruction **out,
 /*
  * The exported structures. The caller may hand these to a consumer, and may
  * move them bitwise and mark the source released, as the specification permits:
- * no private_data points into its own struct, so the structures are relocatable.
- * Returns NULL for the array of a schema-only case.
+ * no private_data points into its own struct, so the structures are
+ * relocatable. Returns NULL for the array of a schema-only case.
  */
 struct ArrowSchema *abi_reconstruction_schema(AbiReconstruction *r);
 struct ArrowArray  *abi_reconstruction_array(AbiReconstruction *r);

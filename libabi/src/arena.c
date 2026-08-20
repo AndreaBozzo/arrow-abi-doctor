@@ -45,7 +45,8 @@ void *abi_arena_alloc(AbiArena *a, size_t size, size_t align) {
   if (!a) return NULL;
   if (align == 0) align = 1;
   if (!abi_is_pow2(align)) return NULL;
-  if (size == 0) size = 1; /* distinct, non-NULL address for zero-size requests */
+  if (size == 0)
+    size = 1; /* distinct, non-NULL address for zero-size requests */
 
   ch = a->head;
   if (ch) {
@@ -92,7 +93,8 @@ void *abi_arena_dup(AbiArena *a, const void *src, size_t size, size_t align) {
   return p;
 }
 
-int abi_arena_bytes(AbiArena *a, AbiBytes *out, const void *src, uint32_t size) {
+int abi_arena_bytes(AbiArena *a, AbiBytes *out, const void *src,
+                    uint32_t size) {
   if (!a || !out) return 0;
   if (size == 0) {
     /*

@@ -22,30 +22,30 @@ static int         g_checks = 0;
 static int         g_fails = 0;
 static const char *g_test = "?";
 
-#define CHECK(cond, msg)                                                   \
-  do {                                                                     \
-    g_checks++;                                                            \
-    if (!(cond)) {                                                         \
-      g_fails++;                                                           \
-      fprintf(stderr, "FAIL [%s] %s:%d: %s\n", g_test, __FILE__, __LINE__,  \
-              (msg));                                                      \
-    }                                                                      \
+#define CHECK(cond, msg)                                                       \
+  do {                                                                         \
+    g_checks++;                                                                \
+    if (!(cond)) {                                                             \
+      g_fails++;                                                               \
+      fprintf(stderr, "FAIL [%s] %s:%d: %s\n", g_test, __FILE__, __LINE__,     \
+              (msg));                                                          \
+    }                                                                          \
   } while (0)
 
-#define CHECKF(cond, fmt, ...)                                             \
-  do {                                                                     \
-    g_checks++;                                                            \
-    if (!(cond)) {                                                         \
-      g_fails++;                                                           \
-      fprintf(stderr, "FAIL [%s] %s:%d: " fmt "\n", g_test, __FILE__,      \
-              __LINE__, __VA_ARGS__);                                      \
-    }                                                                      \
+#define CHECKF(cond, fmt, ...)                                                 \
+  do {                                                                         \
+    g_checks++;                                                                \
+    if (!(cond)) {                                                             \
+      g_fails++;                                                               \
+      fprintf(stderr, "FAIL [%s] %s:%d: " fmt "\n", g_test, __FILE__,          \
+              __LINE__, __VA_ARGS__);                                          \
+    }                                                                          \
   } while (0)
 
-#define RUN(fn)   \
-  do {            \
-    g_test = #fn; \
-    fn();         \
+#define RUN(fn)                                                                \
+  do {                                                                         \
+    g_test = #fn;                                                              \
+    fn();                                                                      \
   } while (0)
 
 /* Counts events of one kind in the log. */
@@ -73,9 +73,9 @@ static const AbiEvent *find_event(const AbiObserver *o, AbiEventKind kind,
 /* --- structure ----------------------------------------------------------- */
 
 static void test_reconstruct_structure(void) {
-  AbiCase           *c = abi_fixture_rich();
-  AbiReconstruction *r = NULL;
-  AbiError           err;
+  AbiCase            *c = abi_fixture_rich();
+  AbiReconstruction  *r = NULL;
+  AbiError            err;
   struct ArrowSchema *s;
   struct ArrowArray  *a;
 
@@ -301,8 +301,8 @@ static void test_consumer_releasing_child_is_a_violation(void) {
  * The specification lets a consumer move a structure with a bitwise copy, mark
  * the source released, and invoke the callback on the destination. A producer
  * may not assume the structure stays at one address, which is what private_data
- * is for. This is the positive half of the pair; the negative half -- a producer
- * storing pointers into its own struct -- is a Corpus B1 case.
+ * is for. This is the positive half of the pair; the negative half -- a
+ * producer storing pointers into its own struct -- is a Corpus B1 case.
  */
 static void test_move_semantics(void) {
   AbiCase           *c = abi_fixture_rich();
@@ -392,7 +392,8 @@ static void test_b1_overdeclared_counts(void) {
   node->length = 4;
   abi_array_add_null_buffer(c, node, ABI_ROLE_VALIDITY);
   abi_array_add_buffer(c, node, ABI_ROLE_DATA, id, 0, 16);
-  abi_array_set_declared_buffers(node, 7); /* after the adds -- see the header */
+  abi_array_set_declared_buffers(node,
+                                 7); /* after the adds -- see the header */
   abi_case_set_array(c, node);
 
   CHECK(abi_case_validate(c, NULL) == ABI_OK, "B1 over-declaration is valid");
@@ -405,7 +406,8 @@ static void test_b1_overdeclared_counts(void) {
          (long long)a->n_buffers);
   CHECK(a->buffers[1] != NULL, "the provided data buffer is present");
   for (i = 2; i < 7; i++) {
-    CHECKF(a->buffers[i] == NULL, "over-declared slot %lld must be NULL", (long long)i);
+    CHECKF(a->buffers[i] == NULL, "over-declared slot %lld must be NULL",
+           (long long)i);
   }
 
   a->release(a);
@@ -425,8 +427,10 @@ static void test_schema_only_case(void) {
   CHECK(abi_reconstruct(c, &r, NULL) == ABI_OK, "schema-only reconstructs");
   if (r) {
     CHECK(abi_reconstruction_schema(r) != NULL, "schema present");
-    CHECK(abi_reconstruction_array(r) == NULL, "no array for a schema-only case");
-    CHECK(strcmp(abi_reconstruction_schema(r)->format, "i") == 0, "format is i");
+    CHECK(abi_reconstruction_array(r) == NULL,
+          "no array for a schema-only case");
+    CHECK(strcmp(abi_reconstruction_schema(r)->format, "i") == 0,
+          "format is i");
     abi_reconstruction_schema(r)->release(abi_reconstruction_schema(r));
     CHECK(!abi_reconstruction_leaked(r), "schema-only release balances");
     abi_reconstruction_free(r);
@@ -460,7 +464,8 @@ static void test_reconstruct_from_file_bytes(void) {
     /* aliasing must survive the file, not just the in-memory case */
     CHECK(a2->children[0]->buffers[0] == a2->children[1]->buffers[0],
           "aliasing survives a trip through the file format");
-    CHECK(memcmp(a1->children[0]->buffers[1], a2->children[0]->buffers[1], 32) == 0,
+    CHECK(memcmp(a1->children[0]->buffers[1], a2->children[0]->buffers[1],
+                 32) == 0,
           "buffer contents match after a file round trip");
   }
   abi_reconstruction_free(r1);

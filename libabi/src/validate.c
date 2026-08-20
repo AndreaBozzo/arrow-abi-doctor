@@ -38,7 +38,8 @@ static int class_requires_consistent_counts(AbiClass cls) {
 }
 
 static AbiStatus val_bytes(AbiVal *v, AbiBytes b, const char *what) {
-  if (!b.data) return val_fail(v, ABI_ERR_INVALID_ARGUMENT, "%s is unset", what);
+  if (!b.data)
+    return val_fail(v, ABI_ERR_INVALID_ARGUMENT, "%s is unset", what);
   if (b.size > ABI_LIMIT_BYTES_LEN) {
     return val_fail(v, ABI_ERR_LIMIT_EXCEEDED, "%s of %lu exceeds limit %lu",
                     what, (unsigned long)b.size,
@@ -220,7 +221,8 @@ static AbiStatus val_shapes_agree(AbiVal *v, const AbiSchemaNode *s,
                     (int)v->c->cls);
   }
   for (i = 0; i < s->child_count; i++) {
-    AbiStatus st = val_shapes_agree(v, s->children[i], a->children[i], depth + 1);
+    AbiStatus st =
+        val_shapes_agree(v, s->children[i], a->children[i], depth + 1);
     if (st != ABI_OK) return st;
   }
   if (s->dictionary) {
@@ -234,7 +236,8 @@ static AbiStatus val_ops(AbiVal *v) {
 
   if (v->c->op_count > ABI_LIMIT_OP_COUNT) {
     return val_fail(v, ABI_ERR_LIMIT_EXCEEDED, "op_count %lu exceeds limit %u",
-                    (unsigned long)v->c->op_count, (unsigned)ABI_LIMIT_OP_COUNT);
+                    (unsigned long)v->c->op_count,
+                    (unsigned)ABI_LIMIT_OP_COUNT);
   }
   if (v->c->op_count && !v->c->ops) {
     return val_fail(v, ABI_ERR_INVALID_ARGUMENT, "call sequence missing");
@@ -250,12 +253,14 @@ static AbiStatus val_ops(AbiVal *v) {
      * perform. Outside a class C case they would not be a test, they would be a
      * mislabelled one.
      */
-    if ((op->code == ABI_OP_RELEASE_CHILD || op->code == ABI_OP_RELEASE_DICTIONARY ||
+    if ((op->code == ABI_OP_RELEASE_CHILD ||
+         op->code == ABI_OP_RELEASE_DICTIONARY ||
          op->code == ABI_OP_USE_AFTER_RELEASE) &&
         v->c->cls != ABI_CLASS_C) {
-      return val_fail(v, ABI_ERR_CLASS_RULE,
-                      "op %lu (code %u) is consumer misuse and requires class C",
-                      (unsigned long)i, (unsigned)op->code);
+      return val_fail(
+          v, ABI_ERR_CLASS_RULE,
+          "op %lu (code %u) is consumer misuse and requires class C",
+          (unsigned long)i, (unsigned)op->code);
     }
     if (op->code != ABI_OP_RELEASE_CHILD && op->arg0 != 0) {
       return val_fail(v, ABI_ERR_NOT_CANONICAL,
@@ -294,10 +299,9 @@ AbiStatus abi_case_validate(const AbiCase *c, AbiError *err) {
   }
 
   if (c->alloc_count > ABI_LIMIT_ALLOC_COUNT) {
-    return val_fail(&v, ABI_ERR_LIMIT_EXCEEDED,
-                    "alloc_count %lu exceeds limit %u",
-                    (unsigned long)c->alloc_count,
-                    (unsigned)ABI_LIMIT_ALLOC_COUNT);
+    return val_fail(
+        &v, ABI_ERR_LIMIT_EXCEEDED, "alloc_count %lu exceeds limit %u",
+        (unsigned long)c->alloc_count, (unsigned)ABI_LIMIT_ALLOC_COUNT);
   }
   if (c->alloc_count && !c->allocations) {
     return val_fail(&v, ABI_ERR_INVALID_ARGUMENT, "allocation table missing");

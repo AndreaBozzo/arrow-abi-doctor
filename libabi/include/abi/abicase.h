@@ -8,8 +8,8 @@
  * for everything in this header.
  *
  * Ownership model: a case owns an arena. Every string, array and node reachable
- * from an AbiCase lives in that arena, and abi_case_free() releases all of it in
- * one call. Nothing reachable from a case is individually freeable, and no
+ * from an AbiCase lives in that arena, and abi_case_free() releases all of it
+ * in one call. Nothing reachable from a case is individually freeable, and no
  * pointer handed to a builder function is retained -- builders copy.
  */
 #ifndef ABI_ABICASE_H
@@ -26,27 +26,27 @@ extern "C" {
 
 /* --- format constants (docs/abicase-format.md 2.1) ----------------------- */
 
-#define ABICASE_SCHEMA_VERSION 1u
-#define ABICASE_HEADER_SIZE    40u
+#define ABICASE_SCHEMA_VERSION      1u
+#define ABICASE_HEADER_SIZE         40u
 #define ABICASE_SECTION_HEADER_SIZE 8u
-#define ABICASE_MAGIC0 0x41u /* 'A' */
-#define ABICASE_MAGIC1 0x42u /* 'B' */
-#define ABICASE_MAGIC2 0x49u /* 'I' */
-#define ABICASE_MAGIC3 0x43u /* 'C' */
-#define ABICASE_BOM    0x0000FEFFu
-#define ABICASE_ID_BYTES 16u
-#define ABICASE_ID_HEX_SIZE 33u /* 32 hex digits + NUL */
+#define ABICASE_MAGIC0              0x41u /* 'A' */
+#define ABICASE_MAGIC1              0x42u /* 'B' */
+#define ABICASE_MAGIC2              0x49u /* 'I' */
+#define ABICASE_MAGIC3              0x43u /* 'C' */
+#define ABICASE_BOM                 0x0000FEFFu
+#define ABICASE_ID_BYTES            16u
+#define ABICASE_ID_HEX_SIZE         33u /* 32 hex digits + NUL */
 
 /* --- decoder limits (docs/abicase-format.md 11) -------------------------- */
 
-#define ABI_LIMIT_TOTAL_SIZE  (64u * 1024u * 1024u)
-#define ABI_LIMIT_ALLOC_COUNT 4096u
-#define ABI_LIMIT_ALLOC_BYTES (16u * 1024u * 1024u)
-#define ABI_LIMIT_ALIGNMENT   4096u
-#define ABI_LIMIT_TREE_DEPTH  64u
-#define ABI_LIMIT_TREE_NODES  4096u
-#define ABI_LIMIT_BYTES_LEN   (1u * 1024u * 1024u)
-#define ABI_LIMIT_OP_COUNT    4096u
+#define ABI_LIMIT_TOTAL_SIZE     (64u * 1024u * 1024u)
+#define ABI_LIMIT_ALLOC_COUNT    4096u
+#define ABI_LIMIT_ALLOC_BYTES    (16u * 1024u * 1024u)
+#define ABI_LIMIT_ALIGNMENT      4096u
+#define ABI_LIMIT_TREE_DEPTH     64u
+#define ABI_LIMIT_TREE_NODES     4096u
+#define ABI_LIMIT_BYTES_LEN      (1u * 1024u * 1024u)
+#define ABI_LIMIT_OP_COUNT       4096u
 #define ABI_LIMIT_PATTERN_PERIOD 256u
 
 /* --- status -------------------------------------------------------------- */
@@ -86,59 +86,59 @@ typedef struct {
 /* --- enums (docs/abicase-format.md 2.2, 5.2, 7.4, 8, 9) ------------------ */
 
 typedef enum {
-  ABI_CLASS_A  = 0,
+  ABI_CLASS_A = 0,
   ABI_CLASS_B1 = 1,
   ABI_CLASS_B2 = 2,
-  ABI_CLASS_C  = 3
+  ABI_CLASS_C = 3
 } AbiClass;
 
 typedef enum {
-  ABI_FILL_RAW     = 0,
-  ABI_FILL_ZERO    = 1,
-  ABI_FILL_RLE     = 2,
+  ABI_FILL_RAW = 0,
+  ABI_FILL_ZERO = 1,
+  ABI_FILL_RLE = 2,
   ABI_FILL_PATTERN = 3
 } AbiFill;
 
 typedef enum {
-  ABI_ROLE_UNSPECIFIED   = 0,
-  ABI_ROLE_VALIDITY      = 1,
-  ABI_ROLE_DATA          = 2,
-  ABI_ROLE_OFFSETS       = 3,
-  ABI_ROLE_TYPE_IDS      = 4,
+  ABI_ROLE_UNSPECIFIED = 0,
+  ABI_ROLE_VALIDITY = 1,
+  ABI_ROLE_DATA = 2,
+  ABI_ROLE_OFFSETS = 3,
+  ABI_ROLE_TYPE_IDS = 4,
   ABI_ROLE_UNION_OFFSETS = 5,
-  ABI_ROLE_SIZES         = 6,
-  ABI_ROLE_VIEWS         = 7,
+  ABI_ROLE_SIZES = 6,
+  ABI_ROLE_VIEWS = 7,
   ABI_ROLE_VARIADIC_DATA = 8,
-  ABI_ROLE__MAX          = 8
+  ABI_ROLE__MAX = 8
 } AbiBufferRole;
 
 typedef enum {
-  ABI_OP_NOP                  = 0,
-  ABI_OP_IMPORT_SCHEMA        = 1,
-  ABI_OP_IMPORT_ARRAY         = 2,
-  ABI_OP_STREAM_GET_SCHEMA    = 3,
-  ABI_OP_STREAM_GET_NEXT      = 4,
+  ABI_OP_NOP = 0,
+  ABI_OP_IMPORT_SCHEMA = 1,
+  ABI_OP_IMPORT_ARRAY = 2,
+  ABI_OP_STREAM_GET_SCHEMA = 3,
+  ABI_OP_STREAM_GET_NEXT = 4,
   ABI_OP_STREAM_GET_LAST_ERROR = 5,
-  ABI_OP_RELEASE_BASE         = 6,
-  ABI_OP_RELEASE_CHILD        = 7,  /* class C only: consumer misuse */
-  ABI_OP_RELEASE_DICTIONARY   = 8,  /* class C only: consumer misuse */
-  ABI_OP_MOVE_STRUCT          = 9,
-  ABI_OP_USE_AFTER_RELEASE    = 10, /* class C only: consumer misuse */
-  ABI_OP_EXPECT_EOF           = 11,
-  ABI_OP__MAX                 = 11
+  ABI_OP_RELEASE_BASE = 6,
+  ABI_OP_RELEASE_CHILD = 7,      /* class C only: consumer misuse */
+  ABI_OP_RELEASE_DICTIONARY = 8, /* class C only: consumer misuse */
+  ABI_OP_MOVE_STRUCT = 9,
+  ABI_OP_USE_AFTER_RELEASE = 10, /* class C only: consumer misuse */
+  ABI_OP_EXPECT_EOF = 11,
+  ABI_OP__MAX = 11
 } AbiOpCode;
 
 typedef enum {
-  ABI_VALIDATE_NONE    = 0,
+  ABI_VALIDATE_NONE = 0,
   ABI_VALIDATE_MINIMAL = 1,
   ABI_VALIDATE_DEFAULT = 2,
-  ABI_VALIDATE_FULL    = 3
+  ABI_VALIDATE_FULL = 3
 } AbiValidationLevel;
 
 typedef enum {
-  ABI_EXPECT_ACCEPT      = 0,
-  ABI_EXPECT_REJECT      = 1,
-  ABI_EXPECT_EITHER      = 2,
+  ABI_EXPECT_ACCEPT = 0,
+  ABI_EXPECT_REJECT = 1,
+  ABI_EXPECT_EITHER = 2,
   ABI_EXPECT_UNSPECIFIED = 3
 } AbiExpectedOutcome;
 
@@ -174,15 +174,15 @@ typedef struct {
 } AbiMetadataKV;
 
 typedef struct AbiSchemaNode {
-  AbiBytes format;
-  int      has_name;
-  AbiBytes name;
-  int      has_metadata;
+  AbiBytes       format;
+  int            has_name;
+  AbiBytes       name;
+  int            has_metadata;
   AbiMetadataKV *metadata;
   uint32_t       metadata_count;
-  int64_t  flags;
-  uint32_t n_children;  /* written into ArrowSchema.n_children */
-  uint32_t child_count; /* nodes actually present; may differ for B1/C */
+  int64_t        flags;
+  uint32_t       n_children;  /* written into ArrowSchema.n_children */
+  uint32_t       child_count; /* nodes actually present; may differ for B1/C */
   struct AbiSchemaNode **children;
   struct AbiSchemaNode  *dictionary;
   uint32_t child_capacity;    /* builder bookkeeping; never serialized */
@@ -190,14 +190,14 @@ typedef struct AbiSchemaNode {
 } AbiSchemaNode;
 
 typedef struct AbiArrayNode {
-  int64_t  length;
-  int64_t  null_count; /* -1 == not computed */
-  int64_t  offset;
-  uint32_t n_buffers;    /* written into ArrowArray.n_buffers */
-  uint32_t buffer_count; /* views actually present; may differ for B1/C */
+  int64_t        length;
+  int64_t        null_count; /* -1 == not computed */
+  int64_t        offset;
+  uint32_t       n_buffers;    /* written into ArrowArray.n_buffers */
+  uint32_t       buffer_count; /* views actually present; may differ for B1/C */
   AbiBufferView *buffers;
-  uint32_t n_children;
-  uint32_t child_count;
+  uint32_t       n_children;
+  uint32_t       child_count;
   struct AbiArrayNode **children;
   struct AbiArrayNode  *dictionary;
   uint32_t buffer_capacity; /* builder bookkeeping; never serialized */
@@ -256,7 +256,8 @@ void abi_free(void *p);
 
 /* NULL string arguments are treated as empty, except where noted. */
 AbiStatus abi_case_set_provenance(AbiCase *c, uint64_t seed,
-                                  const char *rng_algorithm, uint32_t rng_version,
+                                  const char *rng_algorithm,
+                                  uint32_t    rng_version,
                                   const char *generator_version,
                                   const char *abi_doctor_version,
                                   const char *spec_revision);
@@ -274,9 +275,10 @@ AbiStatus abi_case_add_allocation(AbiCase *c, const void *bytes, uint64_t size,
                                   uint32_t alignment, uint32_t *out_id);
 
 AbiSchemaNode *abi_schema_new(AbiCase *c, const char *format);
-AbiStatus abi_schema_set_format(AbiCase *c, AbiSchemaNode *n, const void *format,
-                                uint32_t len);
-/* name == NULL clears the name (ArrowSchema.name == NULL), which differs from "". */
+AbiStatus      abi_schema_set_format(AbiCase *c, AbiSchemaNode *n,
+                                     const void *format, uint32_t len);
+/* name == NULL clears the name (ArrowSchema.name == NULL), which differs from
+ * "". */
 AbiStatus abi_schema_set_name(AbiCase *c, AbiSchemaNode *n, const char *name);
 AbiStatus abi_schema_add_metadata(AbiCase *c, AbiSchemaNode *n, const void *key,
                                   uint32_t key_len, const void *value,
@@ -295,7 +297,7 @@ void      abi_schema_set_dictionary(AbiSchemaNode *n, AbiSchemaNode *dict);
  * well-formed one that tests nothing. Class A and B2 reject the mismatch at
  * encode time, so only B1 and C can lose it quietly.
  */
-void      abi_schema_set_declared_children(AbiSchemaNode *n, uint32_t n_children);
+void abi_schema_set_declared_children(AbiSchemaNode *n, uint32_t n_children);
 
 AbiArrayNode *abi_array_new(AbiCase *c);
 AbiStatus abi_array_add_buffer(AbiCase *c, AbiArrayNode *n, AbiBufferRole role,
@@ -311,8 +313,8 @@ void      abi_array_set_dictionary(AbiArrayNode *n, AbiArrayNode *dict);
  * Break the declared counts on purpose. Class B1/C only.
  * Call AFTER every add for the node -- see abi_schema_set_declared_children().
  */
-void      abi_array_set_declared_buffers(AbiArrayNode *n, uint32_t n_buffers);
-void      abi_array_set_declared_children(AbiArrayNode *n, uint32_t n_children);
+void abi_array_set_declared_buffers(AbiArrayNode *n, uint32_t n_buffers);
+void abi_array_set_declared_children(AbiArrayNode *n, uint32_t n_children);
 
 void      abi_case_set_schema(AbiCase *c, AbiSchemaNode *schema);
 void      abi_case_set_array(AbiCase *c, AbiArrayNode *array);
@@ -326,7 +328,8 @@ AbiStatus abi_case_add_op(AbiCase *c, AbiOpCode code, uint32_t arg0,
  * abi_free(). Encoding a case that violates the format's invariants fails
  * rather than emitting a file the decoder would reject.
  */
-AbiStatus abi_case_encode(const AbiCase *c, uint8_t **out_data, size_t *out_size);
+AbiStatus abi_case_encode(const AbiCase *c, uint8_t **out_data,
+                          size_t *out_size);
 
 /*
  * Decodes and validates. Rejects any non-canonical input, so that

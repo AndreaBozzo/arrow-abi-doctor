@@ -1,0 +1,5 @@
+# arrow_abi.h is vendored verbatim from the Arrow specification. Reformatting it
+# would destroy the one property that makes it auditable -- that it is
+# byte-for-byte what upstream publishes -- so it is never touched by the
+# formatter, and a diff against upstream stays meaningful.
+libabi/include/abi/arrow_abi.h

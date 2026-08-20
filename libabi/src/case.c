@@ -11,22 +11,22 @@
 
 const char *abi_status_str(AbiStatus status) {
   switch (status) {
-    case ABI_OK:                   return "ok";
-    case ABI_ERR_INVALID_ARGUMENT: return "invalid argument";
-    case ABI_ERR_NO_MEMORY:        return "out of memory";
-    case ABI_ERR_TRUNCATED:        return "truncated input";
-    case ABI_ERR_BAD_MAGIC:        return "bad magic";
-    case ABI_ERR_BAD_VERSION:      return "unsupported version";
-    case ABI_ERR_BAD_BYTE_ORDER:   return "bad byte order";
-    case ABI_ERR_NOT_CANONICAL:    return "not canonical";
-    case ABI_ERR_LIMIT_EXCEEDED:   return "limit exceeded";
-    case ABI_ERR_BAD_REFERENCE:    return "bad reference";
-    case ABI_ERR_BAD_ENUM:         return "bad enum value";
-    case ABI_ERR_TRAILING_BYTES:   return "trailing bytes";
-    case ABI_ERR_DIGEST_MISMATCH:  return "payload id mismatch";
-    case ABI_ERR_MISSING_SECTION:  return "missing required section";
-    case ABI_ERR_CLASS_RULE:       return "class rule violated";
-    case ABI_ERR_IO:               return "i/o error";
+  case ABI_OK: return "ok";
+  case ABI_ERR_INVALID_ARGUMENT: return "invalid argument";
+  case ABI_ERR_NO_MEMORY: return "out of memory";
+  case ABI_ERR_TRUNCATED: return "truncated input";
+  case ABI_ERR_BAD_MAGIC: return "bad magic";
+  case ABI_ERR_BAD_VERSION: return "unsupported version";
+  case ABI_ERR_BAD_BYTE_ORDER: return "bad byte order";
+  case ABI_ERR_NOT_CANONICAL: return "not canonical";
+  case ABI_ERR_LIMIT_EXCEEDED: return "limit exceeded";
+  case ABI_ERR_BAD_REFERENCE: return "bad reference";
+  case ABI_ERR_BAD_ENUM: return "bad enum value";
+  case ABI_ERR_TRAILING_BYTES: return "trailing bytes";
+  case ABI_ERR_DIGEST_MISMATCH: return "payload id mismatch";
+  case ABI_ERR_MISSING_SECTION: return "missing required section";
+  case ABI_ERR_CLASS_RULE: return "class rule violated";
+  case ABI_ERR_IO: return "i/o error";
   }
   return "unknown status";
 }
@@ -99,7 +99,7 @@ void abi_case_free(AbiCase *c) {
 
 AbiStatus abi_case_set_provenance(AbiCase *c, uint64_t seed,
                                   const char *rng_algorithm,
-                                  uint32_t rng_version,
+                                  uint32_t    rng_version,
                                   const char *generator_version,
                                   const char *abi_doctor_version,
                                   const char *spec_revision) {
@@ -148,8 +148,8 @@ AbiStatus abi_case_add_allocation(AbiCase *c, const void *bytes, uint64_t size,
   }
   if (size > ABI_LIMIT_ALLOC_BYTES) return ABI_ERR_LIMIT_EXCEEDED;
   if (!abi_vec_grow(c->arena, (void **)&c->allocations, &c->alloc_capacity,
-                    c->alloc_count, sizeof(AbiAllocation), _Alignof(AbiAllocation),
-                    ABI_LIMIT_ALLOC_COUNT)) {
+                    c->alloc_count, sizeof(AbiAllocation),
+                    _Alignof(AbiAllocation), ABI_LIMIT_ALLOC_COUNT)) {
     return (c->alloc_count >= ABI_LIMIT_ALLOC_COUNT) ? ABI_ERR_LIMIT_EXCEEDED
                                                      : ABI_ERR_NO_MEMORY;
   }
@@ -181,11 +181,12 @@ AbiSchemaNode *abi_schema_new(AbiCase *c, const char *format) {
   return n;
 }
 
-AbiStatus abi_schema_set_format(AbiCase *c, AbiSchemaNode *n, const void *format,
-                                uint32_t len) {
+AbiStatus abi_schema_set_format(AbiCase *c, AbiSchemaNode *n,
+                                const void *format, uint32_t len) {
   if (!c || !n || (!format && len)) return ABI_ERR_INVALID_ARGUMENT;
   if (len > ABI_LIMIT_BYTES_LEN) return ABI_ERR_LIMIT_EXCEEDED;
-  if (!abi_arena_bytes(c->arena, &n->format, format, len)) return ABI_ERR_NO_MEMORY;
+  if (!abi_arena_bytes(c->arena, &n->format, format, len))
+    return ABI_ERR_NO_MEMORY;
   return ABI_OK;
 }
 
@@ -234,9 +235,10 @@ AbiStatus abi_schema_add_metadata(AbiCase *c, AbiSchemaNode *n, const void *key,
 AbiStatus abi_schema_add_child(AbiCase *c, AbiSchemaNode *parent,
                                AbiSchemaNode *child) {
   if (!c || !parent || !child) return ABI_ERR_INVALID_ARGUMENT;
-  if (!abi_vec_grow(c->arena, (void **)&parent->children, &parent->child_capacity,
-                    parent->child_count, sizeof(AbiSchemaNode *),
-                    _Alignof(AbiSchemaNode *), ABI_LIMIT_TREE_NODES)) {
+  if (!abi_vec_grow(c->arena, (void **)&parent->children,
+                    &parent->child_capacity, parent->child_count,
+                    sizeof(AbiSchemaNode *), _Alignof(AbiSchemaNode *),
+                    ABI_LIMIT_TREE_NODES)) {
     return ABI_ERR_NO_MEMORY;
   }
   parent->children[parent->child_count] = child;
@@ -303,9 +305,10 @@ AbiStatus abi_array_add_null_buffer(AbiCase *c, AbiArrayNode *n,
 AbiStatus abi_array_add_child(AbiCase *c, AbiArrayNode *parent,
                               AbiArrayNode *child) {
   if (!c || !parent || !child) return ABI_ERR_INVALID_ARGUMENT;
-  if (!abi_vec_grow(c->arena, (void **)&parent->children, &parent->child_capacity,
-                    parent->child_count, sizeof(AbiArrayNode *),
-                    _Alignof(AbiArrayNode *), ABI_LIMIT_TREE_NODES)) {
+  if (!abi_vec_grow(c->arena, (void **)&parent->children,
+                    &parent->child_capacity, parent->child_count,
+                    sizeof(AbiArrayNode *), _Alignof(AbiArrayNode *),
+                    ABI_LIMIT_TREE_NODES)) {
     return ABI_ERR_NO_MEMORY;
   }
   parent->children[parent->child_count] = child;
@@ -360,7 +363,8 @@ AbiStatus abi_case_add_op(AbiCase *c, AbiOpCode code, uint32_t arg0,
  * a binary container in a way that survives casual inspection and shows up
  * later as a truncation error on a file that was written correctly.
  */
-AbiStatus abi_read_file(const char *path, uint8_t **out_data, size_t *out_size) {
+AbiStatus abi_read_file(const char *path, uint8_t **out_data,
+                        size_t *out_size) {
   FILE    *f;
   uint8_t *buf = NULL;
   size_t   cap = 0, len = 0;

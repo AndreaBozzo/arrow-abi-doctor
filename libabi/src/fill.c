@@ -22,7 +22,8 @@ static uint64_t abi_rle_run_count(const uint8_t *b, uint64_t size) {
   uint64_t runs = 0, i = 0;
   while (i < size) {
     uint64_t j = i + 1;
-    while (j < size && b[j] == b[i]) j++;
+    while (j < size && b[j] == b[i])
+      j++;
     runs++;
     i = j;
   }
@@ -98,31 +99,29 @@ int abi_fill_write(AbiBuf *out, const uint8_t *bytes, uint64_t size,
   uint64_t i;
 
   switch (fill) {
-    case ABI_FILL_ZERO:
-      return 1;
+  case ABI_FILL_ZERO: return 1;
 
-    case ABI_FILL_RAW:
-      return abi_buf_put(out, bytes, (size_t)size);
+  case ABI_FILL_RAW: return abi_buf_put(out, bytes, (size_t)size);
 
-    case ABI_FILL_PATTERN:
-      if (!abi_buf_u32(out, period)) return 0;
-      return abi_buf_put(out, bytes, period);
+  case ABI_FILL_PATTERN:
+    if (!abi_buf_u32(out, period)) return 0;
+    return abi_buf_put(out, bytes, period);
 
-    case ABI_FILL_RLE: {
-      if (!abi_buf_u32(out, run_count)) return 0;
-      i = 0;
-      while (i < size) {
-        uint64_t j = i + 1;
-        while (j < size && bytes[j] == bytes[i]) j++;
-        if (!abi_buf_u32(out, (uint32_t)(j - i))) return 0;
-        if (!abi_buf_u8(out, bytes[i])) return 0;
-        i = j;
-      }
-      return 1;
+  case ABI_FILL_RLE: {
+    if (!abi_buf_u32(out, run_count)) return 0;
+    i = 0;
+    while (i < size) {
+      uint64_t j = i + 1;
+      while (j < size && bytes[j] == bytes[i])
+        j++;
+      if (!abi_buf_u32(out, (uint32_t)(j - i))) return 0;
+      if (!abi_buf_u8(out, bytes[i])) return 0;
+      i = j;
     }
+    return 1;
+  }
 
-    default:
-      return 0;
+  default: return 0;
   }
 }
 
@@ -149,93 +148,93 @@ int abi_fill_read(AbiCur *c, AbiArena *arena, uint64_t size, uint8_t fill,
   if (size) memset(dst, 0, (size_t)size);
 
   switch (fill) {
-    case ABI_FILL_ZERO:
-      break; /* already zeroed */
+  case ABI_FILL_ZERO: break; /* already zeroed */
 
-    case ABI_FILL_RAW: {
-      const uint8_t *raw = NULL;
-      if (!abi_cur_raw(c, size, &raw)) return 0;
-      if (size) memcpy(dst, raw, (size_t)size);
-      break;
-    }
-
-    case ABI_FILL_PATTERN: {
-      size_t         pat_at = c->pos;
-      uint32_t       period = abi_cur_u32(c);
-      const uint8_t *pat = NULL;
-      uint64_t       max_p = size / 2;
-      uint64_t       off;
-
-      if (c->failed) return 0;
-      if (max_p > ABI_LIMIT_PATTERN_PERIOD) max_p = ABI_LIMIT_PATTERN_PERIOD;
-      if (period == 0 || (uint64_t)period > max_p || size % period != 0) {
-        return abi_cur_fail(c, ABI_ERR_NOT_CANONICAL, pat_at,
-                            "PATTERN period %lu invalid for size %llu",
-                            (unsigned long)period, (unsigned long long)size);
-      }
-      if (!abi_cur_raw(c, period, &pat)) return 0;
-      for (off = 0; off < size; off += period) memcpy(dst + off, pat, period);
-      declared_period = period;
-      break;
-    }
-
-    case ABI_FILL_RLE: {
-      size_t   rc_at = c->pos;
-      uint32_t run_count = abi_cur_u32(c);
-      uint32_t r;
-      uint64_t written = 0;
-      int      have_prev = 0;
-      uint8_t  prev = 0;
-
-      if (c->failed) return 0;
-      /* Each run costs 5 bytes and covers >= 1 byte: both bound run_count. */
-      if ((uint64_t)run_count > size) {
-        return abi_cur_fail(c, ABI_ERR_NOT_CANONICAL, rc_at,
-                            "RLE run_count %lu exceeds size %llu",
-                            (unsigned long)run_count, (unsigned long long)size);
-      }
-      for (r = 0; r < run_count; r++) {
-        size_t   run_at = c->pos;
-        uint32_t run_len = abi_cur_u32(c);
-        uint8_t  value = abi_cur_u8(c);
-        if (c->failed) return 0;
-        if (run_len == 0) {
-          return abi_cur_fail(c, ABI_ERR_NOT_CANONICAL, run_at,
-                              "RLE run length must be non-zero");
-        }
-        if ((uint64_t)run_len > size - written) {
-          return abi_cur_fail(c, ABI_ERR_NOT_CANONICAL, run_at,
-                              "RLE runs overrun size %llu",
-                              (unsigned long long)size);
-        }
-        if (have_prev && value == prev) {
-          /* Two encodings for one payload; the maximal-run form is the only
-             canonical one. */
-          return abi_cur_fail(c, ABI_ERR_NOT_CANONICAL, run_at,
-                              "adjacent RLE runs share value 0x%02x",
-                              (unsigned)value);
-        }
-        memset(dst + written, value, run_len);
-        written += run_len;
-        prev = value;
-        have_prev = 1;
-      }
-      if (written != size) {
-        return abi_cur_fail(c, ABI_ERR_NOT_CANONICAL, at,
-                            "RLE runs cover %llu of %llu bytes",
-                            (unsigned long long)written,
-                            (unsigned long long)size);
-      }
-      declared_runs = run_count;
-      break;
-    }
-
-    default:
-      return abi_cur_fail(c, ABI_ERR_BAD_ENUM, at, "unknown fill code %u",
-                          (unsigned)fill);
+  case ABI_FILL_RAW: {
+    const uint8_t *raw = NULL;
+    if (!abi_cur_raw(c, size, &raw)) return 0;
+    if (size) memcpy(dst, raw, (size_t)size);
+    break;
   }
 
-  canon = abi_fill_choose(dst, size, &canon_payload, &canon_period, &canon_runs);
+  case ABI_FILL_PATTERN: {
+    size_t         pat_at = c->pos;
+    uint32_t       period = abi_cur_u32(c);
+    const uint8_t *pat = NULL;
+    uint64_t       max_p = size / 2;
+    uint64_t       off;
+
+    if (c->failed) return 0;
+    if (max_p > ABI_LIMIT_PATTERN_PERIOD) max_p = ABI_LIMIT_PATTERN_PERIOD;
+    if (period == 0 || (uint64_t)period > max_p || size % period != 0) {
+      return abi_cur_fail(c, ABI_ERR_NOT_CANONICAL, pat_at,
+                          "PATTERN period %lu invalid for size %llu",
+                          (unsigned long)period, (unsigned long long)size);
+    }
+    if (!abi_cur_raw(c, period, &pat)) return 0;
+    for (off = 0; off < size; off += period)
+      memcpy(dst + off, pat, period);
+    declared_period = period;
+    break;
+  }
+
+  case ABI_FILL_RLE: {
+    size_t   rc_at = c->pos;
+    uint32_t run_count = abi_cur_u32(c);
+    uint32_t r;
+    uint64_t written = 0;
+    int      have_prev = 0;
+    uint8_t  prev = 0;
+
+    if (c->failed) return 0;
+    /* Each run costs 5 bytes and covers >= 1 byte: both bound run_count. */
+    if ((uint64_t)run_count > size) {
+      return abi_cur_fail(c, ABI_ERR_NOT_CANONICAL, rc_at,
+                          "RLE run_count %lu exceeds size %llu",
+                          (unsigned long)run_count, (unsigned long long)size);
+    }
+    for (r = 0; r < run_count; r++) {
+      size_t   run_at = c->pos;
+      uint32_t run_len = abi_cur_u32(c);
+      uint8_t  value = abi_cur_u8(c);
+      if (c->failed) return 0;
+      if (run_len == 0) {
+        return abi_cur_fail(c, ABI_ERR_NOT_CANONICAL, run_at,
+                            "RLE run length must be non-zero");
+      }
+      if ((uint64_t)run_len > size - written) {
+        return abi_cur_fail(c, ABI_ERR_NOT_CANONICAL, run_at,
+                            "RLE runs overrun size %llu",
+                            (unsigned long long)size);
+      }
+      if (have_prev && value == prev) {
+        /* Two encodings for one payload; the maximal-run form is the only
+           canonical one. */
+        return abi_cur_fail(c, ABI_ERR_NOT_CANONICAL, run_at,
+                            "adjacent RLE runs share value 0x%02x",
+                            (unsigned)value);
+      }
+      memset(dst + written, value, run_len);
+      written += run_len;
+      prev = value;
+      have_prev = 1;
+    }
+    if (written != size) {
+      return abi_cur_fail(
+          c, ABI_ERR_NOT_CANONICAL, at, "RLE runs cover %llu of %llu bytes",
+          (unsigned long long)written, (unsigned long long)size);
+    }
+    declared_runs = run_count;
+    break;
+  }
+
+  default:
+    return abi_cur_fail(c, ABI_ERR_BAD_ENUM, at, "unknown fill code %u",
+                        (unsigned)fill);
+  }
+
+  canon =
+      abi_fill_choose(dst, size, &canon_payload, &canon_period, &canon_runs);
   if ((uint8_t)canon != fill) {
     return abi_cur_fail(c, ABI_ERR_NOT_CANONICAL, at,
                         "allocation uses fill %u but canonical encoding is %u",
@@ -256,7 +255,8 @@ int abi_fill_read(AbiCur *c, AbiArena *arena, uint64_t size, uint8_t fill,
   if (canon_runs != declared_runs) {
     return abi_cur_fail(c, ABI_ERR_NOT_CANONICAL, at,
                         "RLE run_count %lu is not the maximal-run count %lu",
-                        (unsigned long)declared_runs, (unsigned long)canon_runs);
+                        (unsigned long)declared_runs,
+                        (unsigned long)canon_runs);
   }
   (void)canon_payload;
 

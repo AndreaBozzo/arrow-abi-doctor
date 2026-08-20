@@ -25,10 +25,10 @@ static int fail(const char *what, AbiStatus st, const AbiError *err) {
 
 static const char *class_name(AbiClass c) {
   switch (c) {
-    case ABI_CLASS_A:  return "A";
-    case ABI_CLASS_B1: return "B1";
-    case ABI_CLASS_B2: return "B2";
-    case ABI_CLASS_C:  return "C";
+  case ABI_CLASS_A: return "A";
+  case ABI_CLASS_B1: return "B1";
+  case ABI_CLASS_B2: return "B2";
+  case ABI_CLASS_C: return "C";
   }
   return "?";
 }
@@ -42,10 +42,10 @@ static const char *role_name(uint8_t r) {
 
 static const char *fill_name(AbiFill f) {
   switch (f) {
-    case ABI_FILL_RAW:     return "RAW";
-    case ABI_FILL_ZERO:    return "ZERO";
-    case ABI_FILL_RLE:     return "RLE";
-    case ABI_FILL_PATTERN: return "PATTERN";
+  case ABI_FILL_RAW: return "RAW";
+  case ABI_FILL_ZERO: return "ZERO";
+  case ABI_FILL_RLE: return "RLE";
+  case ABI_FILL_PATTERN: return "PATTERN";
   }
   return "?";
 }
@@ -149,8 +149,8 @@ static void print_array(const AbiArrayNode *n, const char *path, int indent) {
 }
 
 /* Counts how many views reference one allocation, for the topology report. */
-static void count_refs(const AbiArrayNode *n, uint32_t alloc_id, const char *path,
-                       int *count) {
+static void count_refs(const AbiArrayNode *n, uint32_t alloc_id,
+                       const char *path, int *count) {
   uint32_t i;
   char     child_path[256];
 
@@ -206,7 +206,8 @@ static int cmd_dump(const char *path) {
     const AbiAllocation *a = &c->allocations[i];
     uint64_t             payload = 0;
     uint32_t             period = 0, runs = 0;
-    AbiFill f = abi_fill_choose(a->bytes, a->size_bytes, &payload, &period, &runs);
+    AbiFill              f =
+        abi_fill_choose(a->bytes, a->size_bytes, &payload, &period, &runs);
 
     printf("  [%lu] size=%llu align=%lu fill=%s(payload %llu)\n",
            (unsigned long)i, (unsigned long long)a->size_bytes,
@@ -248,7 +249,8 @@ static int cmd_dump(const char *path) {
 
   printf("\nexpected:\n");
   printf("  validation_level: %s\n", level_name(c->expected.validation_level));
-  printf("  outcome:          %s\n", outcome_name(c->expected.expected_outcome));
+  printf("  outcome:          %s\n",
+         outcome_name(c->expected.expected_outcome));
   printf("  spec_clause:      ");
   print_bytes(&c->expected.spec_clause);
   printf("\n  notes:            ");
@@ -356,14 +358,15 @@ static int cmd_selftest(const char *out_path) {
 }
 
 static int usage(void) {
-  fprintf(stderr,
-          "abicase " ABI_DOCTOR_VERSION "\n"
-          "\n"
-          "usage:\n"
-          "  abicase dump      <file>       structure and topology, host-independent\n"
-          "  abicase verify    <file>       decode, re-encode, require byte equality\n"
-          "  abicase id        <file>       canonical case id\n"
-          "  abicase selftest  [-o <file>]  emit the shared fixture\n");
+  fprintf(stderr, "abicase " ABI_DOCTOR_VERSION "\n"
+                  "\n"
+                  "usage:\n"
+                  "  abicase dump      <file>       structure and topology, "
+                  "host-independent\n"
+                  "  abicase verify    <file>       decode, re-encode, require "
+                  "byte equality\n"
+                  "  abicase id        <file>       canonical case id\n"
+                  "  abicase selftest  [-o <file>]  emit the shared fixture\n");
   return 2;
 }
 

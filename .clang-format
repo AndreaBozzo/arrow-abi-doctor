@@ -1,0 +1,17 @@
+# Tuned to the code that was already here: two-space indent, 80 columns, aligned
+# declarations, single-statement ifs left on one line. The repo was formatted by
+# hand before this file existed and clang-format could not reproduce it exactly,
+# so it was applied once across the tree rather than left to drift.
+BasedOnStyle: LLVM
+IndentWidth: 2
+ColumnLimit: 80
+PointerAlignment: Right
+AlignConsecutiveDeclarations: Consecutive
+AlignConsecutiveMacros: Consecutive
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: true
+# Include order is meaningful here: abi_internal.h must follow the system
+# headers it depends on, and reordering has broken the build before.
+SortIncludes: false

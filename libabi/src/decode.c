@@ -69,9 +69,11 @@ static int dec_allocations(AbiDec *d) {
     return 0;
   }
 
-  d->c->allocations = ABI_ARENA_ARRAY(d->c->arena, AbiAllocation, count ? count : 1);
+  d->c->allocations =
+      ABI_ARENA_ARRAY(d->c->arena, AbiAllocation, count ? count : 1);
   if (!d->c->allocations) {
-    return abi_cur_fail(&d->cur, ABI_ERR_NO_MEMORY, d->cur.pos, "out of memory");
+    return abi_cur_fail(&d->cur, ABI_ERR_NO_MEMORY, d->cur.pos,
+                        "out of memory");
   }
   d->c->alloc_capacity = count;
 
@@ -127,7 +129,8 @@ static AbiSchemaNode *dec_schema_node(AbiDec *d, uint32_t depth) {
   }
   if (++d->nodes > ABI_LIMIT_TREE_NODES) {
     abi_cur_fail(&d->cur, ABI_ERR_LIMIT_EXCEEDED, d->cur.pos,
-                 "schema node count exceeds %u", (unsigned)ABI_LIMIT_TREE_NODES);
+                 "schema node count exceeds %u",
+                 (unsigned)ABI_LIMIT_TREE_NODES);
     return NULL;
   }
 
@@ -164,16 +167,18 @@ static AbiSchemaNode *dec_schema_node(AbiDec *d, uint32_t depth) {
     if (!dec_count_guard(d, kv_count, 8, ABI_LIMIT_TREE_NODES, "metadata")) {
       return NULL;
     }
-    n->metadata = ABI_ARENA_ARRAY(d->c->arena, AbiMetadataKV,
-                                  kv_count ? kv_count : 1);
+    n->metadata =
+        ABI_ARENA_ARRAY(d->c->arena, AbiMetadataKV, kv_count ? kv_count : 1);
     if (!n->metadata) {
       abi_cur_fail(&d->cur, ABI_ERR_NO_MEMORY, d->cur.pos, "out of memory");
       return NULL;
     }
     n->metadata_capacity = kv_count;
     for (i = 0; i < kv_count; i++) {
-      if (!abi_cur_bytes(&d->cur, d->c->arena, &n->metadata[i].key)) return NULL;
-      if (!abi_cur_bytes(&d->cur, d->c->arena, &n->metadata[i].value)) return NULL;
+      if (!abi_cur_bytes(&d->cur, d->c->arena, &n->metadata[i].key))
+        return NULL;
+      if (!abi_cur_bytes(&d->cur, d->c->arena, &n->metadata[i].value))
+        return NULL;
     }
     n->metadata_count = kv_count;
   }
@@ -182,7 +187,8 @@ static AbiSchemaNode *dec_schema_node(AbiDec *d, uint32_t depth) {
   n->n_children = abi_cur_u32(&d->cur);
   n->child_count = abi_cur_u32(&d->cur);
   if (d->cur.failed) return NULL;
-  /* a child node is at least a length prefix, a presence byte, flags and counts */
+  /* a child node is at least a length prefix, a presence byte, flags and counts
+   */
   if (!dec_count_guard(d, n->child_count, 4,
                        ABI_LIMIT_TREE_NODES - d->nodes + 1, "schema child")) {
     return NULL;
@@ -238,8 +244,8 @@ static AbiArrayNode *dec_array_node(AbiDec *d, uint32_t depth) {
   n->buffer_count = abi_cur_u32(&d->cur);
   if (d->cur.failed) return NULL;
   /* role + present + 2 reserved is the smallest a view can be */
-  if (!dec_count_guard(d, n->buffer_count, 4,
-                       ABI_LIMIT_TREE_NODES - d->buffers, "buffer view")) {
+  if (!dec_count_guard(d, n->buffer_count, 4, ABI_LIMIT_TREE_NODES - d->buffers,
+                       "buffer view")) {
     return NULL;
   }
   d->buffers += n->buffer_count;
@@ -322,7 +328,8 @@ static int dec_callseq(AbiDec *d) {
 
   d->c->ops = ABI_ARENA_ARRAY(d->c->arena, AbiOp, count);
   if (!d->c->ops) {
-    return abi_cur_fail(&d->cur, ABI_ERR_NO_MEMORY, d->cur.pos, "out of memory");
+    return abi_cur_fail(&d->cur, ABI_ERR_NO_MEMORY, d->cur.pos,
+                        "out of memory");
   }
   d->c->op_capacity = count;
   for (i = 0; i < count; i++) {
@@ -357,7 +364,8 @@ static int dec_expected(AbiDec *d) {
                         (unsigned)d->c->expected.expected_outcome);
   }
   if (!abi_cur_zeros(&d->cur, 2, "expected.reserved")) return 0;
-  if (!abi_cur_bytes(&d->cur, d->c->arena, &d->c->expected.spec_clause)) return 0;
+  if (!abi_cur_bytes(&d->cur, d->c->arena, &d->c->expected.spec_clause))
+    return 0;
   if (!abi_cur_bytes(&d->cur, d->c->arena, &d->c->expected.notes)) return 0;
   return !d->cur.failed;
 }
@@ -374,7 +382,8 @@ static int dec_header(AbiDec *d, size_t size, uint32_t *out_sections,
   if (size < ABICASE_HEADER_SIZE) {
     return abi_cur_fail(cur, ABI_ERR_TRUNCATED, 0,
                         "file of %llu bytes is shorter than the %u-byte header",
-                        (unsigned long long)size, (unsigned)ABICASE_HEADER_SIZE);
+                        (unsigned long long)size,
+                        (unsigned)ABICASE_HEADER_SIZE);
   }
   if (cur->data[0] != ABICASE_MAGIC0 || cur->data[1] != ABICASE_MAGIC1 ||
       cur->data[2] != ABICASE_MAGIC2 || cur->data[3] != ABICASE_MAGIC3) {
@@ -406,7 +415,8 @@ static int dec_header(AbiDec *d, size_t size, uint32_t *out_sections,
     return abi_cur_fail(cur, ABI_ERR_BAD_BYTE_ORDER, 8,
                         "byte-order marker is 0x%08lx, expected 0x%08lx%s",
                         (unsigned long)bom, (unsigned long)ABICASE_BOM,
-                        (bom == 0xFFFE0000u) ? " (file written big-endian)" : "");
+                        (bom == 0xFFFE0000u) ? " (file written big-endian)"
+                                             : "");
   }
   cls = abi_cur_u8(cur);
   if (cls > ABI_CLASS_C) {
@@ -435,9 +445,9 @@ static int dec_header(AbiDec *d, size_t size, uint32_t *out_sections,
                         (unsigned long)total, (unsigned long long)size);
   }
   if ((uint64_t)total < (uint64_t)size) {
-    return abi_cur_fail(cur, ABI_ERR_TRAILING_BYTES, total,
-                        "%llu byte(s) past total_size %lu",
-                        (unsigned long long)(size - total), (unsigned long)total);
+    return abi_cur_fail(
+        cur, ABI_ERR_TRAILING_BYTES, total, "%llu byte(s) past total_size %lu",
+        (unsigned long long)(size - total), (unsigned long)total);
   }
 
   /* payload id: identity and corruption check in one field */
@@ -521,36 +531,34 @@ AbiStatus abi_case_decode(const uint8_t *data, size_t size, AbiCase **out,
     d.cur.size = sec_end; /* a section cannot read past its own payload */
 
     switch (tag) {
-      case ABICASE_TAG_PROVENANCE:
-        ok = dec_provenance(&d);
-        have_provenance = 1;
-        break;
-      case ABICASE_TAG_ALLOCATIONS:
-        ok = dec_allocations(&d);
-        have_allocations = 1;
-        break;
-      case ABICASE_TAG_SCHEMA:
-        d.nodes = 0;
-        d.c->schema = dec_schema_node(&d, 0);
-        ok = (d.c->schema != NULL);
-        have_schema = 1;
-        break;
-      case ABICASE_TAG_ARRAY:
-        d.nodes = 0;
-        d.c->array = dec_array_node(&d, 0);
-        ok = (d.c->array != NULL);
-        break;
-      case ABICASE_TAG_CALLSEQ:
-        ok = dec_callseq(&d);
-        break;
-      case ABICASE_TAG_EXPECTED:
-        ok = dec_expected(&d);
-        have_expected = 1;
-        break;
-      default:
-        ok = abi_cur_fail(&d.cur, ABI_ERR_BAD_ENUM, sec_at,
-                          "unknown section tag 0x%04x", (unsigned)tag);
-        break;
+    case ABICASE_TAG_PROVENANCE:
+      ok = dec_provenance(&d);
+      have_provenance = 1;
+      break;
+    case ABICASE_TAG_ALLOCATIONS:
+      ok = dec_allocations(&d);
+      have_allocations = 1;
+      break;
+    case ABICASE_TAG_SCHEMA:
+      d.nodes = 0;
+      d.c->schema = dec_schema_node(&d, 0);
+      ok = (d.c->schema != NULL);
+      have_schema = 1;
+      break;
+    case ABICASE_TAG_ARRAY:
+      d.nodes = 0;
+      d.c->array = dec_array_node(&d, 0);
+      ok = (d.c->array != NULL);
+      break;
+    case ABICASE_TAG_CALLSEQ: ok = dec_callseq(&d); break;
+    case ABICASE_TAG_EXPECTED:
+      ok = dec_expected(&d);
+      have_expected = 1;
+      break;
+    default:
+      ok = abi_cur_fail(&d.cur, ABI_ERR_BAD_ENUM, sec_at,
+                        "unknown section tag 0x%04x", (unsigned)tag);
+      break;
     }
 
     if (!ok || d.cur.failed) {

@@ -8,19 +8,21 @@ AbiCase *abi_fixture_rich(void) {
   AbiArrayNode  *a_root, *a_int, *a_dict_idx, *a_dict_val;
   uint32_t       al_validity = 0, al_offsets = 0, al_data = 0, al_text = 0,
                  al_runs = 0;
-  uint8_t validity[16], offsets[64], data[32], text[8], runs[16];
-  size_t  i;
+  uint8_t        validity[16], offsets[64], data[32], text[8], runs[16];
+  size_t         i;
 
   if (!c) return NULL;
 
-  memset(validity, 0xFF, sizeof(validity));            /* PATTERN period 1 */
-  memset(offsets, 0, sizeof(offsets));                 /* ZERO             */
-  for (i = 0; i < sizeof(data); i++) data[i] = (uint8_t)(i * 7 + 3); /* RAW */
-  memcpy(text, "abcdefgh", 8);                         /* RAW              */
+  memset(validity, 0xFF, sizeof(validity)); /* PATTERN period 1 */
+  memset(offsets, 0, sizeof(offsets));      /* ZERO             */
+  for (i = 0; i < sizeof(data); i++)
+    data[i] = (uint8_t)(i * 7 + 3); /* RAW */
+  memcpy(text, "abcdefgh", 8);      /* RAW              */
   /* dictionary indices, and they must be in range for a 2-value
      dictionary: this is a class A case, so the data has to be valid.
      Still two runs, so the RLE fill encoding is still exercised. */
-  for (i = 0; i < sizeof(runs); i++) runs[i] = (uint8_t)(i < 8 ? 0x00 : 0x01);
+  for (i = 0; i < sizeof(runs); i++)
+    runs[i] = (uint8_t)(i < 8 ? 0x00 : 0x01);
 
   abi_case_set_provenance(c, 0xDEADBEEFCAFEBABEull, "xoshiro256++", 1,
                           "handwritten", ABI_DOCTOR_VERSION,
@@ -114,7 +116,7 @@ AbiCase *abi_fixture_smoke(void) {
   AbiArrayNode  *a_root, *a_int, *a_str;
   uint32_t       al_validity = 0, al_ints = 0, al_offsets = 0, al_chars = 0;
   /* int32 [10, null, 30, 40], little-endian */
-  static const unsigned char ints[16] = {10, 0, 0, 0, 0, 0, 0, 0,
+  static const unsigned char ints[16] = {10, 0, 0, 0, 0,  0, 0, 0,
                                          30, 0, 0, 0, 40, 0, 0, 0};
   /* validity: rows 0,2,3 valid, row 1 null  -> 0b00001101 */
   static const unsigned char validity[1] = {0x0D};
@@ -181,7 +183,7 @@ AbiCase *abi_fixture_bad_dict_index(void) {
   static const unsigned char indices[4] = {0, 1, 99, 0};
   /* offsets [0,2,4] over "aabb" -> "aa", "bb" */
   static const unsigned char offsets[12] = {0, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0};
-  static const char chars[4] = {'a', 'a', 'b', 'b'};
+  static const char          chars[4] = {'a', 'a', 'b', 'b'};
 
   if (!c) return NULL;
 
