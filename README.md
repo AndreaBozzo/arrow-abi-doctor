@@ -161,6 +161,12 @@ Cross-architecture check (needs `gcc-s390x-linux-gnu` and `qemu-user-static`):
 ./tools/cross-arch-check.sh
 ```
 
+`-DABI_CXX=ON` enables the C++ language for the M1 adapters; it is off by
+default so a host with only a C compiler can configure. The Python adapter,
+lint and format tooling, the sanitizer and big-endian hosts, and what to do when
+setuptools cannot find MSVC are all in
+[docs/dev-environment.md](docs/dev-environment.md).
+
 ---
 
 ## Scope

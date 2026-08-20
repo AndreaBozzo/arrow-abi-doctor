@@ -1,0 +1,60 @@
+# Tool configuration only. This repository is not a Python package: the Python
+# here is the dataprof adapter's build script and harness, which setuptools
+# builds in place from adapters/dataprof/setup.py.
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["build", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "BLE", "PL", "C4"]
+ignore = [
+  # Consumer imports are deliberately deferred into the functions that use them.
+  # A host missing pyarrow or dataprof must still be able to import the harness
+  # and report which consumers it could not run, rather than failing at import
+  # time with a traceback that names the wrong problem.
+  "PLC0415",
+]
+# BLE001 is selected on purpose and suppressed at three sites with a comment
+# explaining why: the harness must catch BaseException, because a pyo3
+# PanicException does not derive from Exception and would otherwise end the run.
+# Selecting the rule and annotating the exceptions keeps that decision visible.
+
+[tool.mypy]
+python_version = "3.12"
+files = ["adapters"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+# _abicase is our own C extension and has no stubs; it does not exist at all on
+# a host where the extension has not been built, which includes every Windows
+# checkout today (see issue #8). dataprof and pyarrow ship no type information
+# that mypy can use here.
+module = ["_abicase", "dataprof", "pyarrow"]
+ignore_missing_imports = true
+
+[dependency-groups]
+# Formatters are pinned exactly, not floated. clang-format's output changes
+# between releases, so an unpinned version turns the CI format gate into a
+# tripwire that fires when a runner image updates rather than when code changes.
+dev = [
+  "ruff==0.16.3",
+  "mypy==2.3.1",
+  "clang-format==22.1.8",
+  "types-setuptools",
+]
+
+# What the adapter harness needs to actually run. Kept separate from dev because
+# it is per-host: on Windows these are the published wheels, while the Linux
+# smoke runs against a dataprof built from a specific commit (see
+# docs/dev-environment.md) and must not have one installed over it.
+smoke = [
+  "pyarrow",
+  "dataprof",
+  "setuptools",
+]

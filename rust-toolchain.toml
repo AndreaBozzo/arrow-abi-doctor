@@ -1,0 +1,9 @@
+# No crate exists yet -- the coordinator and CLI land in M1 (issue #1) and the
+# arrow-rs adapter in M3. This file is here so that when they do, every host and
+# CI runner already agrees on the toolchain rather than discovering it.
+#
+# Tracks the sibling repo (dataprof: edition 2024, rust-version 1.96) so a
+# developer moving between the two does not switch toolchains.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

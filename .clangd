@@ -1,0 +1,6 @@
+# Point clangd at the compile database CMake writes into the build tree.
+# Configure with `cmake -S . -B build -G Ninja` and the editor resolves includes
+# with no per-developer setup. Ninja or Makefiles only: the Visual Studio
+# generator does not emit compile_commands.json.
+CompileFlags:
+  CompilationDatabase: build

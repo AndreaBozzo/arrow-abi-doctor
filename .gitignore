@@ -7,6 +7,9 @@ target/
 *.exe
 *.pdb
 *.ilk
+*.obj
+*.lib
+*.dll
 compile_commands.json
 .cache/
 
@@ -25,3 +28,13 @@ libabi/tests/scratch/
 __pycache__/
 *.egg-info/
 .eggs/
+
+# python tooling
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# claude code: project settings are shared, personal overrides are not
+.claude/settings.local.json

@@ -1,10 +1,23 @@
 cmake_minimum_required(VERSION 3.16)
+
+# C++ is opt-in. The M1 adapters (Arrow C++, DuckDB) are C++, but nothing in the
+# tree needs a C++ compiler today, and enabling the language unconditionally
+# makes every configure fail on a host that only has a C compiler.
+option(ABI_CXX "Enable C++ targets (M1 adapters)" OFF)
+
 project(arrow_abi_doctor C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+if(ABI_CXX)
+  enable_language(CXX)
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+  set(CMAKE_CXX_EXTENSIONS OFF)
+endif()
 
 option(ABI_WERROR      "Treat warnings as errors" OFF)
 option(ABI_SANITIZERS  "Build with ASan + UBSan" OFF)
@@ -17,8 +30,12 @@ if(MSVC)
   endif()
 else()
   target_compile_options(abi_flags INTERFACE
-    -Wall -Wextra -Wpedantic -Wshadow -Wvla -Wpointer-arith
-    -Wstrict-prototypes -Wmissing-prototypes -Wcast-qual)
+    -Wall -Wextra -Wpedantic -Wshadow -Wvla -Wpointer-arith -Wcast-qual
+    # C-only: GCC and Clang warn that the flag itself does not apply to a C++
+    # translation unit, which -Werror then promotes to an error. Guarding them
+    # by language keeps one flags target usable for both.
+    $<$<COMPILE_LANGUAGE:C>:-Wstrict-prototypes>
+    $<$<COMPILE_LANGUAGE:C>:-Wmissing-prototypes>)
   if(ABI_WERROR)
     target_compile_options(abi_flags INTERFACE -Werror)
   endif()
@@ -31,14 +48,13 @@ if(ABI_SANITIZERS)
   target_link_options(abi_flags INTERFACE -fsanitize=address,undefined)
 endif()
 
-# Put the compile database where clangd looks for it, so the editor resolves
-# includes without every developer hand-configuring a build directory.
-if(CMAKE_EXPORT_COMPILE_COMMANDS)
-  file(CREATE_LINK
-    "${CMAKE_BINARY_DIR}/compile_commands.json"
-    "${CMAKE_SOURCE_DIR}/compile_commands.json"
-    COPY_ON_ERROR SYMBOLIC)
-endif()
+# The compile database stays in the build tree; .clangd points the editor at it.
+# Copying or symlinking it to the source root at configure time cannot work:
+# CMake writes the file during *generate*, so the source does not exist yet.
+# On Linux the symlink is created dangling and resolves a moment later, which is
+# why this went unnoticed; on Windows, where symlink creation needs privilege,
+# COPY_ON_ERROR falls back to a copy of a file that is not there and configure
+# fails outright.
 
 enable_testing()
 add_subdirectory(libabi)

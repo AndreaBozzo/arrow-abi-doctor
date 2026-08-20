@@ -10,6 +10,35 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    name: lint / format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Versions come from pyproject's dev group and are pinned there. An
+      # unpinned formatter makes this job fail when a runner image updates
+      # rather than when someone changes code, which trains people to ignore it.
+      - name: install dev tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --group dev
+      - name: ruff
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: mypy
+        run: mypy .
+      # arrow_abi.h is excluded by .clang-format-ignore: it is vendored verbatim
+      # and a diff against upstream has to stay meaningful.
+      - name: clang-format
+        run: |
+          clang-format --dry-run --Werror \
+            libabi/src/*.c libabi/src/*.h libabi/include/abi/*.h \
+            libabi/tests/*.c libabi/tests/*.h tools/*.c adapters/dataprof/*.c
+
   linux-gcc:
     name: linux / gcc / -Werror
     runs-on: ubuntu-latest
@@ -108,3 +137,25 @@ jobs:
         run: cmake --build build --config RelWithDebInfo
       - name: test
         run: ctest --test-dir build --build-config RelWithDebInfo --output-on-failure
+
+  windows-smoke:
+    name: windows / msvc / dataprof + pyarrow smoke
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The project claims portability and demonstrated it for libabi but not
+      # for the first adapter, whose CPython extension had only ever been built
+      # on Linux. setup.py now picks flags per compiler, because cl.exe accepts
+      # -std=c11 as an unknown option it ignores with a warning: passing the GCC
+      # flags through builds C89-with-extensions and says so only in passing.
+      - name: install consumers
+        run: python -m pip install --quiet dataprof pyarrow setuptools
+      - name: build the _abicase extension
+        run: python setup.py build_ext --inplace
+        working-directory: adapters/dataprof
+      - name: smoke
+        run: python run_smoke.py
+        working-directory: adapters/dataprof

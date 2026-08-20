@@ -1,0 +1,28 @@
+# The repo is LF everywhere (.gitattributes enforces it on commit); this makes
+# editors agree before the file reaches git, which is where CRLF damage
+# normally starts on Windows.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.{c,h}]
+indent_size = 2
+max_line_length = 80
+
+[*.py]
+indent_size = 4
+max_line_length = 100
+
+[*.rs]
+indent_size = 4
+max_line_length = 100
+
+[*.md]
+# Markdown gives two trailing spaces a meaning, so stripping them edits prose.
+trim_trailing_whitespace = false
