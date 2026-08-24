@@ -130,6 +130,12 @@ jobs:
       - name: smoke
         run: python run_smoke.py
         working-directory: adapters/dataprof
+      # "0 leaks" is one of the few things this harness asserts, so the line
+      # between a leak and bytes a live capsule still owns gets its own check.
+      # Its consumers are synthetic, so it needs no consumer library.
+      - name: leak accounting
+        run: python check_leak_accounting.py
+        working-directory: adapters/dataprof
 
   windows-msvc:
     name: windows / msvc
@@ -163,4 +169,10 @@ jobs:
         working-directory: adapters/dataprof
       - name: smoke
         run: python run_smoke.py
+        working-directory: adapters/dataprof
+      # "0 leaks" is one of the few things this harness asserts, so the line
+      # between a leak and bytes a live capsule still owns gets its own check.
+      # Its consumers are synthetic, so it needs no consumer library.
+      - name: leak accounting
+        run: python check_leak_accounting.py
         working-directory: adapters/dataprof

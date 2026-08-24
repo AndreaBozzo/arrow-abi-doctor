@@ -203,8 +203,10 @@ migration window is 2026 and does not stay open long.
 ## Milestones
 
 - **M0** — the format. Canonical encoding, alias-aware allocation/view model,
-  provenance. Byte-identical round trip on one host; logical, structural and
-  topological equivalence verified between two architectures. ✅
+  provenance. Byte-identical round trip on one host; structural and topological
+  equivalence verified between two architectures — not *logical*, since buffer
+  data is native-endian and scalar values do not cross an endianness change
+  (format spec §10.1). ✅
 - **M0.5** — smoke. A `dataprof` adapter, an existing C Data / C Stream consumer
   under our own control. Not a differential pair: a test of the instrument. ✅
   ([record](docs/m0.5-smoke.md)) It turned up two defects in that consumer, both

@@ -51,6 +51,7 @@ valgrind --error-exitcode=9 --leak-check=full --show-leak-kinds=all \
 cd adapters/dataprof && python setup.py build_ext --inplace
 python run_smoke.py            # add --log for the full lifecycle event log
 python repro_findings.py
+python check_leak_accounting.py   # leaked vs. still-held-by-the-consumer (#6)
 
 # the frozen conformance model: recompute N and compare against the document
 python tools/coverage_matrix.py            # full breakdown
@@ -146,8 +147,12 @@ measure is worth less than no harness.
 - **A regression check that has never failed guards nothing.** Run it against
   the unfixed build and confirm it fails. `repro_findings.py` is written this
   way: it passes on dataprof master and fails on the 0.10.0 wheel.
-- Do not claim a measurement the run did not make. The leak counter in
-  `run_smoke.py` means "outstanding at this instant", not "leaked" (issue #6).
+- Do not claim a measurement the run did not make. The allocator counter means
+  "outstanding at this instant", which is why it is called `outstanding` and not
+  `leaked`: while a capsule cut from the case is still alive it owns bytes that
+  nothing has leaked. `run_smoke.py` reports **leaked** and **still held by the
+  consumer** separately, and `check_leak_accounting.py` guards the distinction
+  (issue #6).
 
 ## Conventions
 

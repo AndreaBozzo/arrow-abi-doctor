@@ -26,6 +26,7 @@ run, a rejection cannot be attributed to either side.
 from __future__ import annotations
 
 import argparse
+import gc
 import sys
 import traceback
 
@@ -60,10 +61,29 @@ class Outcome:
         return any(e["kind"] == "HARNESS_RELEASED" for e in self.lifecycle.get("events", []))
 
     @property
+    def held_by_consumer(self) -> bool:
+        """Bytes are outstanding, but a live capsule still owns them.
+
+        Not a leak. A consumer that takes the capsules and then fails without
+        consuming them leaves structures the capsule owns; `release_all()`
+        cannot reach them, because they were moved out. Python releases them
+        when it collects the capsule. Issue #6: the allocator counter means
+        "outstanding at this instant", and reporting that as a leak would send
+        someone chasing a bug that is not there.
+        """
+        life = self.lifecycle
+        return bool(life.get("outstanding")) and life.get("capsules_outstanding", 0) > 0
+
+    @property
+    def leaked(self) -> bool:
+        """Bytes are outstanding and nothing is left that could release them."""
+        life = self.lifecycle
+        return bool(life.get("outstanding")) and life.get("capsules_outstanding", 1) == 0
+
+    @property
     def clean(self) -> bool:
         """Our side behaved: nothing leaked and no lifecycle rule was broken."""
-        life = self.lifecycle
-        return not life.get("leaked", True) and life.get("violations", 1) == 0
+        return not self.leaked and self.lifecycle.get("violations", 1) == 0
 
 
 def consume_pyarrow(case):
@@ -124,6 +144,14 @@ def run(case_name: str, make_case, consumer: str, verbose: bool) -> Outcome:
         if verbose:
             traceback.print_exc()
 
+    # A failed consumer's traceback keeps its frames alive, and those frames
+    # hold whatever capsules it had taken. The exception -> traceback -> frame
+    # cycle outlives the except block, so without a collection here the capsules
+    # are still alive when the counters are read and the outstanding bytes look
+    # like a leak. Drop everything droppable first; whatever is still held after
+    # this really is held by the consumer (issue #6).
+    gc.collect()
+
     # Release whatever the consumer left live, then read the final report. This
     # order is what keeps "the consumer released it" distinguishable from "we
     # cleaned up after a consumer that did not".
@@ -139,6 +167,10 @@ def print_outcome(out: Outcome) -> None:
         verdict = "CRSH"
     elif not out.clean:
         verdict = "LEAK"
+    elif out.held_by_consumer:
+        # Outstanding but owned by a live capsule. Not a failure, and shown
+        # separately so it is never mistaken for one.
+        verdict = "HELD"
     else:
         verdict = "ok  " if out.accepted else "--  "
     state = "accepted" if out.accepted else ("CRASHED" if out.crashed else "rejected")
@@ -152,16 +184,43 @@ def print_outcome(out: Outcome) -> None:
             "  (harness cleaned up)" if out.harness_had_to_clean_up else "",
         )
     )
+    if out.leaked:
+        alloc_state = "LEAKED"
+    elif out.held_by_consumer:
+        alloc_state = "still held by the consumer"
+    else:
+        alloc_state = "clean"
     print(
-        "           alloc {}/{} bytes, {}/{} blocks | leaked={} violations={}".format(
+        "           alloc {}/{} bytes, {}/{} blocks | outstanding={} "
+        "capsules_outstanding={} -> {} | violations={}".format(
             life.get("bytes_allocated"),
             life.get("bytes_freed"),
             life.get("blocks_allocated"),
             life.get("blocks_freed"),
-            life.get("leaked"),
+            life.get("outstanding"),
+            life.get("capsules_outstanding"),
+            alloc_state,
             life.get("violations"),
         )
     )
+
+
+def print_held(held: list[Outcome]) -> None:
+    """Report outcomes whose bytes are outstanding but still owned by a capsule.
+
+    Held is not a leak and does not flip the verdict; it is printed because the
+    distinction is the whole content of issue #6, and a bare count of
+    outstanding bytes would read as the other thing.
+    """
+    if not held:
+        return
+    print("\nstill held by the consumer at the moment of measurement (not a leak):")
+    for o in held:
+        print(
+            f"  {o.consumer} {o.case_name}: "
+            f"{o.lifecycle.get('outstanding')} outstanding, "
+            f"{o.lifecycle.get('capsules_outstanding')} capsule(s) alive"
+        )
 
 
 def main() -> int:
@@ -211,7 +270,8 @@ def main() -> int:
     # consumer refusing our object *type* is a finding about that consumer, not
     # a failure of the reconstruction -- which is exactly what the third run
     # exists to establish.
-    leaked = [o for o in outcomes if o.lifecycle.get("leaked")]
+    leaked = [o for o in outcomes if o.leaked]
+    held = [o for o in outcomes if o.held_by_consumer]
     violations = [o for o in outcomes if o.lifecycle.get("violations")]
     crashed = [o for o in outcomes if o.crashed]
     smoke = [o for o in outcomes if o.case_name == "fixture:smoke"]
@@ -220,9 +280,11 @@ def main() -> int:
     print("\n" + "-" * 74)
     print(
         f"{len(outcomes)} run(s), {sum(o.accepted for o in outcomes)} accepted | "
-        f"leaks: {len(leaked)} | lifecycle violations: {len(violations)} | "
-        f"consumer crashes: {len(crashed)}"
+        f"leaks: {len(leaked)} | still held by consumer: {len(held)} | "
+        f"lifecycle violations: {len(violations)} | consumer crashes: {len(crashed)}"
     )
+
+    print_held(held)
 
     # A consumer crash is a datum about the consumer, not a failure of this
     # harness, so it does not flip the verdict below. It still gets its own line:

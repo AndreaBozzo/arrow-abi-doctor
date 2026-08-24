@@ -495,7 +495,7 @@ a clause is a case whose expectation is an opinion.
 
 ```
 same host:       .abicase -> case -> .abicase     byte identical
-different host:  .abicase -> case                 same logical, structural and
+different host:  .abicase -> case                 same structural and
                                                   topological case, aliasing
                                                   preserved
 ```
@@ -507,6 +507,45 @@ alias on one host alias on every host; two that do not, never do.
 Byte-identical round-trip is verified per host. Cross-host equality is verified
 by comparing the `payload_id` of a file re-encoded on each architecture, which
 is exactly the check that catches a native integer serialized by accident.
+
+### 10.1 What is not carried across endianness
+
+**Scalar interpretation.** The guarantee above deliberately does not say
+"logical". `.abicase` replays buffer bytes exactly, and Arrow buffer data is
+native-endian, so a buffer holding `int32` values written on a little-endian
+host describes *different scalars* when replayed on a big-endian one. The
+encoding is portable, the structure is portable, the aliasing is portable; the
+values a consumer reads out of the buffers are not.
+
+That is a property of Arrow rather than of this format, and there is nothing to
+fix in either. It is stated here because this is the document someone reads
+before trusting a reproducer, and a reproducer attached to an issue may well be
+opened on a host unlike the one that made it. What survives the trip is what the
+cross-architecture check verifies: the encoded bytes, the structure, the
+topology, the aliasing. What does not survive is what any given `int32` means.
+
+A case whose buffers hold only single-byte or all-zero data is unaffected, and
+so is a schema-only case. Whether a particular case is affected is decidable
+from its schema — any buffer of a type wider than one byte — and belongs in the
+run report, alongside the architecture the run happened on.
+
+### 10.2 Why the generating host's endianness is not recorded
+
+It would be natural to add the generating host's endianness to `PROVENANCE` so a
+case could be flagged when replayed somewhere it will not mean the same thing.
+It is not recorded, and must not be.
+
+`PROVENANCE` is inside the payload, and the payload is the case identity (§2.3).
+A field holding the generating host's endianness would make the same case encode
+to *different bytes*, and therefore to a different `payload_id`, on a big-endian
+host than on a little-endian one. That directly contradicts the cross-host
+guarantee above and would break `tools/cross-arch-check.sh`, which compares the
+two encodings byte for byte. Excluding the field from the digest instead would
+give one case two valid encodings, which §1.1 forbids for the same reason.
+
+The information is real and worth having; it is a property of the *observation*,
+not of the case, which is the same reason §4 keeps consumer version, compiler,
+architecture and sanitizers out of `PROVENANCE`. It belongs in the run report.
 
 ---
 
