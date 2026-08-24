@@ -23,7 +23,7 @@ ignore = [
 
 [tool.mypy]
 python_version = "3.12"
-files = ["adapters"]
+files = ["adapters", "tools"]
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true

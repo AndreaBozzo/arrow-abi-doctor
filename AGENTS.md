@@ -52,6 +52,10 @@ cd adapters/dataprof && python setup.py build_ext --inplace
 python run_smoke.py            # add --log for the full lifecycle event log
 python repro_findings.py
 
+# the frozen conformance model: recompute N and compare against the document
+python tools/coverage_matrix.py            # full breakdown
+python tools/coverage_matrix.py --check    # what CI runs
+
 # lint and format
 ruff check . && ruff format --check . && mypy .
 clang-format --dry-run --Werror libabi/src/*.c libabi/src/*.h \
@@ -135,6 +139,10 @@ measure is worth less than no harness.
   harness.
 - **Never write "nanoarrow accepts it, therefore it is valid."** nanoarrow is
   one voice; it has had validation bugs of its own.
+- **`docs/coverage-matrix.md` is normative and frozen.** N is computed by
+  `tools/coverage_matrix.py`, not maintained by hand, and CI fails if the two
+  disagree. A class may not be removed because it produced a disagreement; §8 of
+  that document says what a legitimate change looks like.
 - **A regression check that has never failed guards nothing.** Run it against
   the unfixed build and confirm it fails. `repro_findings.py` is written this
   way: it passes on dataprof master and fails on the 0.10.0 wheel.
