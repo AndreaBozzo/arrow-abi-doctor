@@ -219,7 +219,10 @@ migration window is 2026 and does not stay open long.
   validator, Arrow C++ and DuckDB adapters, observer with instrumented
   allocator, event log, state machine and dual digest, worker isolation.
   Blocking constraint: `docs/coverage-matrix.md` published **within** M1 —
-  defining it afterwards would invalidate M2-B.
+  defining it afterwards would invalidate M2-B. Now
+  [published and frozen](docs/coverage-matrix.md) at `coverage_model_ver` 1,
+  N = 5650; `tools/coverage_matrix.py --check` recomputes N in CI so the figure
+  cannot drift from the model.
 - **M2** — 90 days. Succeeds on either: **(A)** a Corpus A disagreement between
   two consumers, classified as crash/leak or silent divergence, reproduced in a
   `.abicase` under 10 KB, filed upstream and accepted as valid; or **(B)** no
@@ -241,7 +244,8 @@ apparent. It only counts if the surface was defined beforehand.
 ```
 libabi/       C -- the .abicase format, the case model, reconstruction,
               the lifecycle observer, generators (M1)
-tools/        the abicase CLI and the cross-architecture check
+tools/        the abicase CLI, the cross-architecture check, and the
+              enumerator for the bounded conformance model
 refval/       nanoarrow binding, the reference validator          (M1)
 adapters/     per-engine consumers; dataprof lands first (M0.5)
 observer/     instrumented allocator, event log, state machine    (M1)

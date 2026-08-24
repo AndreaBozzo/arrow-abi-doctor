@@ -31,6 +31,11 @@ jobs:
           ruff format --check .
       - name: mypy
         run: mypy .
+      # docs/coverage-matrix.md is normative and quotes N. This recomputes N
+      # from tools/coverage_matrix.py and fails if the two have drifted, so
+      # the published figure stays a computed one rather than a maintained one.
+      - name: coverage model
+        run: python tools/coverage_matrix.py --check
       # arrow_abi.h is excluded by .clang-format-ignore: it is vendored verbatim
       # and a diff against upstream has to stay meaningful.
       - name: clang-format
