@@ -33,6 +33,16 @@ typedef struct {
   PyObject_HEAD AbiReconstruction *rec;
   int array_taken;  /* __arrow_c_array__ moved the array out */
   int schema_taken; /* __arrow_c_schema__ moved the schema out */
+  /*
+   * Capsules cut from this case that have not yet been destroyed. A consumer
+   * that takes a capsule and then fails without consuming it leaves a live
+   * structure the capsule owns; release_all() cannot reach it, because the
+   * structure was moved out. The bytes are outstanding at that instant and
+   * nothing has leaked -- Python releases them when it collects the capsule.
+   * Without this count the two states are indistinguishable and the harness
+   * reports a leak that is not there (issue #6).
+   */
+  int capsules_outstanding;
 } AbiCaseObject;
 
 /*
@@ -59,6 +69,9 @@ static void schema_capsule_destructor(PyObject *capsule) {
   }
   /* Released only if the consumer did not take it: that is the contract. */
   if (p->schema.release != NULL) p->schema.release(&p->schema);
+  /* `owner` is set before the capsule exists, so a destructor always has one.
+     Decrement before the DECREF, which may be the owner's last reference. */
+  ((AbiCaseObject *)p->owner)->capsules_outstanding--;
   Py_XDECREF(p->owner);
   free(p);
 }
@@ -71,6 +84,7 @@ static void array_capsule_destructor(PyObject *capsule) {
     return;
   }
   if (p->array.release != NULL) p->array.release(&p->array);
+  ((AbiCaseObject *)p->owner)->capsules_outstanding--;
   Py_XDECREF(p->owner);
   free(p);
 }
@@ -101,6 +115,7 @@ static PyObject *make_schema_capsule(AbiCaseObject *self) {
     return NULL;
   }
   self->schema_taken = 1;
+  self->capsules_outstanding++;
   return cap;
 }
 
@@ -134,6 +149,7 @@ static PyObject *make_array_capsule(AbiCaseObject *self) {
     return NULL;
   }
   self->array_taken = 1;
+  self->capsules_outstanding++;
   return cap;
 }
 
@@ -198,16 +214,29 @@ static PyObject *AbiCase_lifecycle(PyObject *selfobj, PyObject *Py_UNUSED(a)) {
     Py_DECREF(d);
   }
 
+  /*
+   * `outstanding` is what the allocator has not seen freed at this instant. It
+   * is deliberately not called "leaked": while capsules_outstanding is
+   * non-zero, some of it is owned by a live capsule and will be released when
+   * Python collects it. Only the caller, which knows whether the capsules are
+   * gone, can turn these two numbers into a verdict -- see issue #6.
+   *
+   * libabi keeps the name `abi_reconstruction_leaked` because there it is
+   * accurate: nothing can move a structure out of a reconstruction in libabi's
+   * own tests. The ambiguity is created by this adapter, so the renaming
+   * belongs here.
+   */
   /* "O" rather than "N": N steals the reference, and on a partial failure it
      is unspecified whether it stole before failing, which makes the error path
      a coin-flip between a leak and a double free. */
   result = Py_BuildValue(
-      "{s:K,s:K,s:K,s:K,s:O,s:I,s:I,s:O,s:O,s:O}", "bytes_allocated",
+      "{s:K,s:K,s:K,s:K,s:O,s:i,s:I,s:I,s:O,s:O,s:O}", "bytes_allocated",
       (unsigned long long)o->alloc.bytes_allocated, "bytes_freed",
       (unsigned long long)o->alloc.bytes_freed, "blocks_allocated",
       (unsigned long long)o->alloc.blocks_allocated, "blocks_freed",
-      (unsigned long long)o->alloc.blocks_freed, "leaked",
-      abi_reconstruction_leaked(self->rec) ? Py_True : Py_False, "violations",
+      (unsigned long long)o->alloc.blocks_freed, "outstanding",
+      abi_reconstruction_leaked(self->rec) ? Py_True : Py_False,
+      "capsules_outstanding", self->capsules_outstanding, "violations",
       (unsigned int)o->violations, "events_dropped",
       (unsigned int)o->events_dropped, "schema_taken",
       self->schema_taken ? Py_True : Py_False, "array_taken",
@@ -285,6 +314,7 @@ static PyObject *wrap_case(AbiCase *c) {
   obj->rec = rec;
   obj->array_taken = 0;
   obj->schema_taken = 0;
+  obj->capsules_outstanding = 0;
   return (PyObject *)obj;
 }
 

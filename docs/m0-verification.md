@@ -5,12 +5,19 @@ M0 asks for four things:
 1. `.abicase` with a canonical encoding, an alias-aware allocation/view model,
    and a provenance block;
 2. idempotent round trip on the same host, byte for byte;
-3. logical, structural and topological equivalence verified **between two
+3. structural and topological equivalence verified **between two
    architectures**;
 4. no adapters, no observer.
 
 This file records how each was measured, so that "verified" means something a
 reader can re-run rather than something the author asserts.
+
+Item 3 originally read "logical, structural and topological". *Logical* was
+dropped because nothing here measures it and nothing could: `.abicase` replays
+buffer bytes exactly and Arrow buffer data is native-endian, so scalar values do
+not survive a change of endianness even though the encoding, the structure and
+the aliasing all do. Format spec §10.1 states the boundary. The checks in §3
+below are unchanged — the word was wrong, not the measurement.
 
 Re-run everything with:
 
