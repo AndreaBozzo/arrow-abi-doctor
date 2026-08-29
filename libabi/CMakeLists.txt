@@ -8,6 +8,7 @@ add_library(abi STATIC
   src/encode.c
   src/decode.c
   src/reconstruct.c
+  src/digest.c
 )
 target_include_directories(abi
   PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -31,5 +32,9 @@ add_executable(reconstruct_tests tests/test_reconstruct.c)
 target_link_libraries(reconstruct_tests PRIVATE abi abi_fixture abi_flags)
 target_include_directories(reconstruct_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+add_executable(digest_tests tests/test_digest.c)
+target_link_libraries(digest_tests PRIVATE abi abi_flags)
+
 add_test(NAME abicase COMMAND abicase_tests)
 add_test(NAME reconstruct COMMAND reconstruct_tests)
+add_test(NAME digest COMMAND digest_tests)

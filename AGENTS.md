@@ -37,6 +37,7 @@ ctest --test-dir build --output-on-failure
 # a single suite, with its own output rather than ctest's summary
 ./build/libabi/abicase_tests
 ./build/libabi/reconstruct_tests
+./build/libabi/digest_tests
 
 # sanitizers and Valgrind -- WSL only, no runtime on MinGW
 cmake -S . -B build/asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DABI_SANITIZERS=ON -DABI_WERROR=ON
@@ -60,6 +61,8 @@ python tools/coverage_matrix.py --check    # what CI runs
 # Corpus A: instantiate the model, audit it, then read it back as arrays
 cmake --build build --target abicase-gen
 python tools/gen_corpus.py                 # writes corpus/a/, also what CI runs
+./build/tools/abicase digest <file>|-      # both digests; - reads paths on stdin
+python tools/digest_property.py            # the digest partition, over the corpus
 cd adapters/dataprof && python check_corpus.py   # every slot vs. the model
 
 # lint and format
@@ -102,6 +105,7 @@ case.c        build/own an AbiCase (arena-allocated)
 validate.c    structural + canonicality + class rules
 encode.c      AbiCase -> canonical bytes      decode.c  bytes -> AbiCase
 reconstruct.c AbiCase -> real ArrowSchema/ArrowArray, plus the observer
+digest.c      physical and logical digests of a reconstruction (docs/digest.md)
 adapters/     present a reconstruction to a consumer (dataprof: PyCapsules)
 ```
 
@@ -157,6 +161,14 @@ measure is worth less than no harness.
   so a tuple stamped into `notes` or a per-case seed would make every id unique
   by construction and the duplicate-id check vacuous. `manifest.tsv` carries
   that mapping instead.
+- **The two digests answer different questions, and the boundary is
+  load-bearing.** `logical` answers "did the data survive transport?" and
+  nothing more; timezone, decimal, ordering and dictionary-decoding
+  normalization belong to semdiff, which does not start until after M2. A
+  rule added to `docs/digest.md` §2 that needs to know what a value *means*
+  rather than what it *is* has absorbed semdiff without anyone deciding to.
+  Neither digest sees alignment or aliasing: those are properties of an
+  address, verified by pointer comparison and by construction instead.
 - **Well-formed is not correct.** `gen_corpus.py` checks the container:
   canonical bytes, a file per model cell, unique ids. It would pass unchanged
   if the validity bitmap were written most-significant-bit first — verified,

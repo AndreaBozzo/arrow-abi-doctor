@@ -245,7 +245,7 @@ apparent. It only counts if the surface was defined beforehand.
 
 ```
 libabi/       C -- the .abicase format, the case model, reconstruction,
-              the lifecycle observer, generators (M1)
+              the lifecycle observer, the dual digest, generators (M1)
 tools/        the abicase CLI, the cross-architecture check, the
               enumerator for the bounded conformance model, and the
               corpus generator that instantiates it
@@ -254,7 +254,7 @@ adapters/     per-engine consumers; dataprof lands first (M0.5)
 observer/     instrumented allocator, event log, state machine    (M1)
 coordinator/  Rust -- worker isolation, timeouts, artifacts       (M1)
 corpus/       a/ b1/ b2/ c/ -- a/ is generated, not committed
-docs/         format spec, coverage matrix, spec citations
+docs/         format spec, coverage matrix, digest rules, spec citations
 ```
 
 ## License

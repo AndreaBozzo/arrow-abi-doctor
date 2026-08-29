@@ -12,6 +12,8 @@
 #include <string.h>
 
 #include "abi/abicase.h"
+#include "abi/digest.h"
+#include "abi/reconstruct.h"
 #include "fixture.h"
 
 static int fail(const char *what, AbiStatus st, const AbiError *err) {
@@ -357,6 +359,86 @@ static int cmd_selftest(const char *out_path) {
   return 0;
 }
 
+/*
+ * Reconstructs the case and digests what a consumer would be handed. This is
+ * the producer side of a differential comparison: the same two numbers computed
+ * over what a consumer hands back answer "did the layout change" and "did the
+ * data survive" separately. docs/digest.md is normative.
+ */
+static int digest_one(const char *path) {
+  AbiCase           *c = NULL;
+  AbiReconstruction *r = NULL;
+  AbiDigest          d;
+  AbiError           err;
+  AbiStatus          st;
+  char               physical[ABI_DIGEST_HEX_SIZE];
+  char               logical[ABI_DIGEST_HEX_SIZE];
+
+  memset(&err, 0, sizeof(err));
+  st = abi_case_read_file(path, &c, &err);
+  if (st != ABI_OK) return fail(path, st, &err);
+
+  st = abi_reconstruct(c, &r, &err);
+  abi_case_free(c);
+  if (st != ABI_OK) return fail(path, st, &err);
+
+  st = abi_digest(abi_reconstruction_schema(r), abi_reconstruction_array(r), &d,
+                  &err);
+  if (st != ABI_OK) {
+    abi_reconstruction_free(r);
+    return fail(path, st, &err);
+  }
+  abi_digest_hex(d.physical, physical);
+  abi_digest_hex(d.logical, logical);
+  printf("%s\t%s\t%s\n", physical, logical, path);
+
+  /*
+   * Release before freeing so the reconstruction's own accounting is honest:
+   * a still-live structure holds allocations by design, and "outstanding" is
+   * not "leaked" (issue #6).
+   */
+  abi_reconstruction_release_all(r);
+  if (abi_reconstruction_leaked(r)) {
+    abi_reconstruction_free(r);
+    fprintf(stderr, "error: %s: reconstruction leaked\n", path);
+    return 1;
+  }
+  abi_reconstruction_free(r);
+  return 0;
+}
+
+/*
+ * One line per file, tab separated: physical, logical, path. Takes many files
+ * because the interesting use is a whole corpus, and 1880 process launches to
+ * ask 1880 small questions is its own kind of wrong.
+ */
+static int cmd_digest(int argc, char **argv) {
+  int i, rc = 0;
+
+  printf("# digest_ver %u\n# physical\tlogical\tpath\n",
+         (unsigned)ABI_DIGEST_VER);
+  /*
+   * `-` reads paths from stdin, because a whole corpus does not fit in an
+   * argument list: 1880 of them is past the limit on the shells tried here.
+   */
+  if (argc == 3 && strcmp(argv[2], "-") == 0) {
+    char line[1024];
+    while (fgets(line, sizeof(line), stdin)) {
+      size_t len = strlen(line);
+      while (len && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
+        line[--len] = '\0';
+      }
+      if (len == 0) continue;
+      if (digest_one(line) != 0) rc = 1;
+    }
+    return rc;
+  }
+  for (i = 2; i < argc; i++) {
+    if (digest_one(argv[i]) != 0) rc = 1;
+  }
+  return rc;
+}
+
 static int usage(void) {
   fprintf(stderr, "abicase " ABI_DOCTOR_VERSION "\n"
                   "\n"
@@ -366,6 +448,8 @@ static int usage(void) {
                   "  abicase verify    <file>       decode, re-encode, require "
                   "byte equality\n"
                   "  abicase id        <file>       canonical case id\n"
+                  "  abicase digest    <file>|-     physical and logical "
+                  "digests of the reconstruction\n"
                   "  abicase selftest  [-o <file>]  emit the shared fixture\n");
   return 2;
 }
@@ -376,6 +460,9 @@ int main(int argc, char **argv) {
   if (strcmp(argv[1], "dump") == 0 && argc == 3) return cmd_dump(argv[2]);
   if (strcmp(argv[1], "verify") == 0 && argc == 3) return cmd_verify(argv[2]);
   if (strcmp(argv[1], "id") == 0 && argc == 3) return cmd_id(argv[2]);
+  if (strcmp(argv[1], "digest") == 0 && argc >= 3) {
+    return cmd_digest(argc, argv);
+  }
   if (strcmp(argv[1], "selftest") == 0) {
     if (argc == 2) return cmd_selftest(NULL);
     if (argc == 4 && strcmp(argv[2], "-o") == 0) return cmd_selftest(argv[3]);

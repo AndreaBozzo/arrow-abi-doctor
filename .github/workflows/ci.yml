@@ -64,6 +64,12 @@ jobs:
       # case-id uniqueness, and a file behind every manifest row.
       - name: generate and audit corpus A
         run: python3 tools/gen_corpus.py
+      # The dual digest's central claim, over the corpus rather than over the
+      # hand-built pairs the C tests use: the logical digest must partition the
+      # corpus by (type, length-class, null-pattern) alone, because offset,
+      # alignment and buffer-state are layout and not data. docs/digest.md.
+      - name: check the digest partition
+        run: python3 tools/digest_property.py
 
   sanitizers:
     name: linux / asan + ubsan
