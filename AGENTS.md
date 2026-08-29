@@ -57,6 +57,11 @@ python check_leak_accounting.py   # leaked vs. still-held-by-the-consumer (#6)
 python tools/coverage_matrix.py            # full breakdown
 python tools/coverage_matrix.py --check    # what CI runs
 
+# Corpus A: instantiate the model, audit it, then read it back as arrays
+cmake --build build --target abicase-gen
+python tools/gen_corpus.py                 # writes corpus/a/, also what CI runs
+cd adapters/dataprof && python check_corpus.py   # every slot vs. the model
+
 # lint and format
 ruff check . && ruff format --check . && mypy .
 clang-format --dry-run --Werror libabi/src/*.c libabi/src/*.h \
@@ -144,6 +149,22 @@ measure is worth less than no harness.
   `tools/coverage_matrix.py`, not maintained by hand, and CI fails if the two
   disagree. A class may not be removed because it produced a disagreement; §8 of
   that document says what a legitimate change looks like.
+- **The corpus generator does not enumerate the model.**
+  `tools/coverage_matrix.py` produces the tuples; `tools/gen_corpus.c` builds
+  the case each one describes. A second enumeration would drift, and the drift
+  would show up as a coverage figure rather than as a failing test. Nothing
+  tuple-derived may enter the payload either: the case id is a digest over it,
+  so a tuple stamped into `notes` or a per-case seed would make every id unique
+  by construction and the duplicate-id check vacuous. `manifest.tsv` carries
+  that mapping instead.
+- **Well-formed is not correct.** `gen_corpus.py` checks the container:
+  canonical bytes, a file per model cell, unique ids. It would pass unchanged
+  if the validity bitmap were written most-significant-bit first — verified,
+  by doing it. `adapters/dataprof/check_corpus.py` is the other half: it
+  imports every case through the C Data Interface and compares every slot
+  against the model. Its copy of the fill rules is a deliberate second
+  implementation, the opposite case from the enumeration above; do not
+  "unify" the two.
 - **A regression check that has never failed guards nothing.** Run it against
   the unfixed build and confirm it fails. `repro_findings.py` is written this
   way: it passes on dataprof master and fails on the 0.10.0 wheel.
