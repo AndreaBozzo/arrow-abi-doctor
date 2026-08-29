@@ -24,7 +24,7 @@ from itertools import product
 from pathlib import Path
 from typing import NamedTuple
 
-MODEL_VERSION = 1
+MODEL_VERSION = 2
 
 DOC = Path(__file__).resolve().parent.parent / "docs" / "coverage-matrix.md"
 
