@@ -427,12 +427,23 @@ static AbiStatus attach_buffers(AbiCase *c, AbiArrayNode *a, const GenTuple *t,
       if (st != ABI_OK) return st;
       continue;
     }
-    if (t->buffers == GB_EMPTY) {
+    if (t->buffers == GB_EMPTY && bufs[i].role != ABI_ROLE_OFFSETS) {
       /*
        * A non-NULL buffer pointer over a zero-length allocation, which Arrow
        * distinguishes from a NULL one and so does the format (5.1). One
        * allocation per buffer rather than one shared: sharing would make this
        * class quietly also an aliasing case.
+       *
+       * The offsets buffer is excluded, which is why this class is not simply
+       * "every buffer is empty" (model 1.5). The columnar format says an
+       * offsets buffer "contains length + 1 signed integers", and the C Data
+       * Interface puts the obligation on us: "The producer MUST ensure that
+       * each contiguous buffer is large enough to represent length + offset
+       * values". A zero-byte offsets buffer for a zero-length utf8 array
+       * therefore describes an *invalid* array -- corpus B1, not this model --
+       * and a consumer that sizes the buffer from the spec and reads it, as it
+       * must since the interface transmits no buffer sizes, reads out of
+       * bounds because of us. The values buffer is the one that is empty here.
        */
       st = abi_case_add_allocation(c, NULL, 0, GEN_ALIGNMENT, &id);
       if (st != ABI_OK) return st;

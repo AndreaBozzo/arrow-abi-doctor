@@ -1,6 +1,6 @@
 # Bounded conformance model
 
-`coverage_model_ver` = 1
+`coverage_model_ver` = 2
 Status: **normative.** Frozen before the first corpus run that claims coverage
 over it. Changes are governed by §8.
 
@@ -153,7 +153,7 @@ The patterns are deterministic. No dimension of this model is random.
 | Class | Definition | Why |
 |---|---|---|
 | `normal` | every buffer of the type is present, in its own backing allocation, sized for `offset + length` elements with a floor of one byte | The baseline. The floor keeps the allocation non-degenerate at `length = 0`, which is what makes it distinguishable from `empty`. |
-| `empty` | every buffer pointer is non-`NULL`, but its backing allocation has `size_bytes = 0` | Arrow distinguishes a `NULL` buffer from a zero-length one, and the format does too (format §5.1). This is the "length 0 with non-`NULL` but empty buffers" case; a consumer that conflates the two fails exactly here. |
+| `empty` | every buffer pointer is non-`NULL` over a backing allocation of `size_bytes = 0`, **except an offsets buffer, which keeps its one mandatory entry** | Arrow distinguishes a `NULL` buffer from a zero-length one, and the format does too (format §5.1). This is the "length 0 with non-`NULL` but empty buffers" case; a consumer that conflates the two fails exactly here. The offsets exception is not a softening: the columnar format says an offsets buffer "contains `length + 1` signed integers", and the C Data Interface places the obligation on the producer — "The producer MUST ensure that each contiguous buffer is large enough to represent `length + offset` values encoded according to the Columnar format specification". A zero-byte offsets buffer would therefore describe an **invalid** array, which belongs to Corpus B1 and not to a model whose every case is valid Arrow (§0). For `utf8` it is the *values* buffer that is empty here. |
 | `omitted-validity` | the validity buffer pointer is `NULL`; the others are `normal` | Legal when there are no nulls. It is adjacent to Arrow #40898 — release callback never invoked on import when a buffer pointer was `NULL` — but not the same shape: that report concerned a `NULL` **non**-validity buffer, which this model does not construct (§7). Note the asymmetry this makes visible: `none` nulls has *two* legal representations — omitted validity, and a present all-ones bitmap — and they are separate cells here. |
 | `aliased` | all buffers of the array are views into **one** backing allocation, at distinct correctly-placed offsets | What a producer with an arena actually does. Aliasing is preserved by the format by construction (allocations and views are modelled separately) and is verified by pointer comparison, so a consumer that frees per buffer, or that assumes buffers are disjoint, is caught here. |
 
@@ -216,7 +216,7 @@ counts in §3 are attributed.
 | 3 | `single-element-null-collapse` | `length = one` ⟹ `nulls ∈ {none, all}` | At one element, `all`, `alternating` and `sparse` all describe the same array — a single null slot. Three names for one array would inflate N without adding a case. |
 | 4 | `empty-buffers-need-zero-length` | `buffers = empty` ⟹ `length = zero` | A zero-byte allocation cannot back an array with elements in it. A non-zero length over zero-length buffers is a genuine case, but an *invalid* one: Corpus B1, not this model. |
 | 5 | `empty-buffers-need-zero-offset` | `buffers = empty` ⟹ `offset = 0` | The format's containment invariant is `byte_offset + logical_length ≤ size_bytes`, and `size_bytes` is 0 here. A view past its own allocation would make `abi-doctor` the party constructing an out-of-bounds pointer. |
-| 6 | `empty-buffers-have-no-alignment` | `buffers = empty` ⟹ `alignment = natural` | There are no bytes to place, so the three alignment classes reconstruct identically. |
+| 6 | `empty-buffers-have-no-alignment` | `buffers = empty` ⟹ `alignment = natural` | For four of the five types there are no bytes to place, so the three alignment classes reconstruct identically. For `utf8` the class retains the one mandatory offsets entry (§1.5), whose placement at +0, +1 and +4 is already exercised by every `normal` `utf8` case, so the three classes still add nothing here. |
 | 7 | `omitted-validity-needs-no-nulls` | `buffers = omitted-validity` ⟹ `nulls = none` | Arrow permits the validity buffer to be absent only when there are no nulls. Absent-with-nulls is Corpus B1. |
 | 8 | `aliasing-needs-elements` | `buffers = aliased` ⟹ `length ≠ zero` | With no elements every buffer view is a zero-length window, and sharing a backing allocation has no observable consequence — the reconstruction is indistinguishable from `normal`. |
 
@@ -391,3 +391,4 @@ pre-declared model lies entirely in the fact that it was declared first.
 |---|---|---|
 | 1 | 2026-08-24 | Initial freeze. Enumeration, constraints and N as above. |
 | 1 | 2026-08-29 | Editorial, no version bump: §3's size estimate replaced by measured figures from the first generator run, and §6's buffer-fill rule restated without its circular reference to the case id. No dimension, constraint or count changed, so figures computed before and after this edit remain comparable. |
+| 2 | 2026-08-29 | §1.5's `empty` class described an **invalid** array for `utf8`: a zero-byte offsets buffer, where the columnar format requires `length + 1` entries and the C Data Interface makes that the producer's obligation. Class A is conforming input, so the cell did not belong in the model as written. The class now keeps the single mandatory offsets entry and empties the values buffer instead; §2's constraint 6 keeps its predicate and gains an accurate justification. **N is unchanged at 5650** — no class was added, removed or merged, only one class's realization corrected — but the version moves because §1 changed and §8 does not make exceptions. Found by running the first generated corpus past two consumers: arrow-rs read out of bounds on the case, which was our defect and not its own. |
