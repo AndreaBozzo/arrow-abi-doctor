@@ -13,6 +13,14 @@ target/
 compile_commands.json
 .cache/
 
+# generated corpus -- docs/coverage-matrix.md 3 keeps the generator and the
+# model in the repository, not the several megabytes they produce. Scoped to
+# a/ on purpose: b1/, b2/ and c/ are enumerated defects, hand-written and
+# committed, and a corpus/*/ pattern would swallow them.
+corpus/a/*.abicase
+corpus/a/manifest.tsv
+corpus/a/tuples.tsv
+
 # test scratch
 libabi/tests/scratch/
 *.actual

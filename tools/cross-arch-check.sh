@@ -5,17 +5,18 @@
 # The .abicase format claims to be portable between hosts of differing
 # endianness. That claim is worth nothing until a big-endian machine actually
 # runs the code, so this script builds libabi for s390x (big-endian) alongside
-# the native little-endian build and checks four things:
+# the native little-endian build and checks five things:
 #
 #   1. the full test suite passes on the big-endian host
 #   2. both hosts encode the same case to the same bytes
 #   3. each host decodes and re-encodes the other host's file byte-identically
 #   4. both hosts report the same structure and topology for the same file
+#   5. both hosts generate the same Corpus A, case for case
 #
 # Check 2 is the one that catches a native integer serialized by accident: such
 # a bug is invisible on x86 and passes every little-endian test ever written.
 #
-# Requires: gcc, cmake, ninja, gcc-s390x-linux-gnu, qemu-user-static.
+# Requires: gcc, cmake, ninja, gcc-s390x-linux-gnu, qemu-user-static, python3.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,7 +30,7 @@ cross_dir="$root/build/s390x"
 step() { printf '\n=== %s ===\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
-for tool in cmake ninja s390x-linux-gnu-gcc qemu-s390x-static; do
+for tool in cmake ninja s390x-linux-gnu-gcc qemu-s390x-static python3; do
   command -v "$tool" >/dev/null 2>&1 || fail "missing required tool: $tool"
 done
 
@@ -88,6 +89,28 @@ if ! diff -u "$work/native.dump" "$work/s390x.dump" > "$work/dump.diff"; then
 fi
 echo "ok: identical dump ($(wc -l < "$work/native.dump") lines)"
 grep -c 'ALIASED' "$work/native.dump" | sed 's/^/  aliased allocations: /'
+
+step "5. both hosts generate the same corpus A"
+# Check 2 again, for the code that will produce the thousands of files a
+# coverage claim rests on rather than for one fixture. The generator writes
+# buffer contents as explicit little-endian bytes instead of memcpy'ing host
+# integers; were that ever to slip, one model tuple would build a different
+# case -- and a different case id -- here than on the consumer's host, and
+# every id quoted in an upstream issue would be local to whoever generated it.
+tuples="$work/tuples.tsv"
+le_corpus="$work/corpus-native"
+be_corpus="$work/corpus-s390x"
+cross_gen="qemu-s390x-static $cross_dir/tools/abicase-gen"
+python3 "$root/tools/coverage_matrix.py" --list > "$tuples"
+mkdir -p "$le_corpus" "$be_corpus"
+"$native_dir/tools/abicase-gen" --out "$le_corpus" "$tuples" \
+  | sed 's/^/  native: /'
+# shellcheck disable=SC2086
+$cross_gen --out "$be_corpus" "$tuples" | sed 's/^/  s390x:  /'
+diff -rq "$le_corpus" "$be_corpus" \
+  || fail "the two hosts generated different corpora"
+cases=$(find "$le_corpus" -name '*.abicase' | wc -l)
+echo "ok: $cases cases identical on both hosts"
 
 step "also: the committed golden fixture replays on big-endian"
 # shellcheck disable=SC2086

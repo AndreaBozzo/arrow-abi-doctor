@@ -272,7 +272,13 @@ By buffer-state and by length-class:
 | `omitted-validity` | 900 | `small` | 2025 |
 | `aliased` | 2250 | `medium` | 2025 |
 
-At roughly 1 KB per `.abicase`, the full corpus is a few megabytes. It is
+Size, measured rather than estimated, over the `direct` third of the model that
+`tools/gen_corpus.py` generates today: 1880 cases, 4.7 MB, mean 2489 bytes,
+largest 8891 — an `int64` or `float64` `medium` case at a non-zero
+offset, whose data buffer is incompressible under every canonical fill
+encoding. Every case is inside the 10 KB reproducer budget, but the full
+corpus is on the order of 14 MB rather than the "few megabytes" a 1 KB
+average would suggest. It is
 **generated, not committed**: the repository holds the generator, this model, and
 the minimized reproducers for the cases that actually found something.
 
@@ -334,8 +340,10 @@ campaign's output belongs in the report as "additional evidence, N executions, M
 findings" — never as a percentage, and never merged into the N/N figure above.
 
 The same applies to buffer *contents*. Values are not a dimension of this model:
-the generator fills buffers deterministically from the case id, and the model
-makes no claim about value coverage. Value-space exploration is fuzzing's job.
+the generator fills buffers deterministically from the tuple itself — from
+the case id would be circular, since the id is a digest over the payload the
+buffers are part of (format 2.3) — and the model makes no claim about value
+coverage. Value-space exploration is fuzzing's job.
 
 ---
 
@@ -382,3 +390,4 @@ pre-declared model lies entirely in the fact that it was declared first.
 | Version | Date | Change |
 |---|---|---|
 | 1 | 2026-08-24 | Initial freeze. Enumeration, constraints and N as above. |
+| 1 | 2026-08-29 | Editorial, no version bump: §3's size estimate replaced by measured figures from the first generator run, and §6's buffer-fill rule restated without its circular reference to the case id. No dimension, constraint or count changed, so figures computed before and after this edit remain comparable. |

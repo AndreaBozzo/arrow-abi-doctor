@@ -57,6 +57,13 @@ jobs:
         run: cmake --build build
       - name: test
         run: ctest --test-dir build --output-on-failure
+      # Corpus A is generated, not committed, so nothing else in the tree would
+      # notice a generator that quietly produced fewer cases than the model has
+      # cells. This regenerates it and audits the result against
+      # tools/coverage_matrix.py: per-lifecycle counts, the tuple set itself,
+      # case-id uniqueness, and a file behind every manifest row.
+      - name: generate and audit corpus A
+        run: python3 tools/gen_corpus.py
 
   sanitizers:
     name: linux / asan + ubsan
@@ -74,6 +81,15 @@ jobs:
       # measurement.
       - name: test
         run: ctest --test-dir build --output-on-failure
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+      # 1880 cases through the builder, encoder and decoder is far wider input
+      # than the fixtures reach, and the generator is the one place that walks
+      # every buffer-state and alignment class in bulk. Under ASan a leak or an
+      # out-of-bounds write here is a failure rather than a plausible run.
+      - name: generate corpus A under the sanitizers
+        run: python3 tools/gen_corpus.py
         env:
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
@@ -135,6 +151,20 @@ jobs:
       # Its consumers are synthetic, so it needs no consumer library.
       - name: leak accounting
         run: python check_leak_accounting.py
+        working-directory: adapters/dataprof
+      # Corpus A read back as Arrow arrays rather than as files. gen_corpus.py
+      # proves the container is well-formed and would pass just as happily with
+      # the validity bitmap written most-significant-bit first; check_corpus.py
+      # imports every case and compares every slot against the model. It needs a
+      # consumer, so it lives in this job rather than in linux-gcc.
+      - name: build the corpus generator
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build build --target abicase-gen
+      - name: generate corpus A
+        run: python tools/gen_corpus.py
+      - name: read corpus A back with pyarrow
+        run: python check_corpus.py
         working-directory: adapters/dataprof
 
   windows-msvc:
