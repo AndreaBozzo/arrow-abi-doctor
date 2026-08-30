@@ -121,6 +121,7 @@ stable identity for the case — usable for corpus deduplication and for citing 
 reproducer in an issue.
 
 Full specification: [docs/abicase-format.md](docs/abicase-format.md).
+Worker contract: [docs/worker-protocol.md](docs/worker-protocol.md).
 Verification records: [M0](docs/m0-verification.md), [M0.5](docs/m0.5-smoke.md).
 
 ```
@@ -250,7 +251,8 @@ tools/        the abicase CLI, the cross-architecture check, the
               enumerator for the bounded conformance model, and the
               corpus generator that instantiates it
 refval/       nanoarrow binding, the reference validator          (M1)
-adapters/     per-engine consumers; dataprof lands first (M0.5)
+adapters/     per-engine consumers; null and faulty are C workers,
+              dataprof landed first (M0.5)
 observer/     instrumented allocator, event log, state machine    (M1)
 coordinator/  Rust -- worker isolation, timeouts, artifacts       (M1)
 corpus/       a/ b1/ b2/ c/ -- a/ is generated, not committed
