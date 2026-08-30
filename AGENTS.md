@@ -65,11 +65,22 @@ python tools/gen_corpus.py                 # writes corpus/a/, also what CI runs
 python tools/digest_property.py            # the digest partition, over the corpus
 cd adapters/dataprof && python check_corpus.py   # every slot vs. the model
 
+# worker isolation: the coordinator supervises one process per consumer
+cmake --build build                        # the workers are C targets
+cargo test                                 # really crashes one; needs the build above
+cargo run -p abi-coordinator -- \
+    --worker null=./build/adapters/abi-worker-null \
+    --worker faulty=./build/adapters/abi-worker-faulty \
+    --cases corpus/a --limit 100 --out /tmp/run
+python tools/check_isolation_run.py /tmp/run/run.json --cases 100 --crash-at 40
+
 # lint and format
 ruff check . && ruff format --check . && mypy .
+cargo fmt --check && cargo clippy --all-targets -- -D warnings
 clang-format --dry-run --Werror libabi/src/*.c libabi/src/*.h \
     libabi/include/abi/*.h libabi/tests/*.c libabi/tests/*.h \
-    tools/*.c adapters/dataprof/*.c
+    tools/*.c adapters/dataprof/*.c adapters/common/*.c \
+    adapters/common/*.h adapters/null/*.c adapters/faulty/*.c
 ```
 
 The C tests are a hand-rolled harness, not a framework: they print
@@ -107,7 +118,17 @@ encode.c      AbiCase -> canonical bytes      decode.c  bytes -> AbiCase
 reconstruct.c AbiCase -> real ArrowSchema/ArrowArray, plus the observer
 digest.c      physical and logical digests of a reconstruction (docs/digest.md)
 adapters/     present a reconstruction to a consumer (dataprof: PyCapsules)
+coordinator/  Rust -- one process per consumer, so a crash is a datum
 ```
+
+**A consumer runs in its own process, the interface does not.** A reconstructed
+producer and the consumer it is handed to must live in the same worker: that
+handoff is the object under test. What the process boundary isolates is one
+consumer from another, so that the segfault Arrow C++ or DuckDB is expected to
+produce ends that worker rather than the run, the report and every other
+consumer's result. `docs/worker-protocol.md` is the contract; the rule that
+carries it is that a worker **flushes every result line before starting the next
+case**, which is the only reason a crash can be attributed to a case at all.
 
 Three things in `reconstruct.c` that look wrong until you know why:
 
@@ -199,6 +220,9 @@ measure is worth less than no harness.
 - **Catch `BaseException`, not `Exception`, around consumer calls.** pyo3 derives
   `PanicException` from `BaseException` specifically so it is not swallowed; the
   `# noqa: BLE001` sites are load-bearing and annotated.
+- **Rust**: edition 2024, `rustfmt.toml` (100 columns), clippy clean at
+  `-D warnings`. The workspace root is `Cargo.toml`; `coordinator/` is its only
+  member so far.
 - **Line endings are LF**, enforced by `.gitattributes`. `*.abicase` is binary:
   never touch those bytes.
 - **Commits and PRs carry no AI attribution** — no `Co-Authored-By` trailers, no

@@ -1,0 +1,10 @@
+# The Rust side of the tree. The coordinator lands first (issue #1); the CLI and
+# the arrow-rs adapter join it later, which is why this is a workspace from the
+# start rather than a single crate that would have to be rearranged.
+[workspace]
+resolver = "3"
+members = ["coordinator"]
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"

@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -42,7 +43,9 @@ jobs:
         run: |
           clang-format --dry-run --Werror \
             libabi/src/*.c libabi/src/*.h libabi/include/abi/*.h \
-            libabi/tests/*.c libabi/tests/*.h tools/*.c adapters/dataprof/*.c
+            libabi/tests/*.c libabi/tests/*.h tools/*.c \
+            adapters/dataprof/*.c adapters/common/*.c adapters/common/*.h \
+            adapters/null/*.c adapters/faulty/*.c
 
   linux-gcc:
     name: linux / gcc / -Werror
@@ -172,6 +175,63 @@ jobs:
       - name: read corpus A back with pyarrow
         run: python check_corpus.py
         working-directory: adapters/dataprof
+
+  coordinator:
+    name: linux / worker isolation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build
+      # The isolation tests drive real worker processes, so the C targets have
+      # to exist. They fail rather than skip when the build is missing: a test
+      # that quietly skips has never failed and guards nothing.
+      - name: build the workers
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DABI_WERROR=ON
+          cmake --build build
+      - name: rust format and lint
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+      # Includes the acceptance condition of issue #1: a worker is actually
+      # segfaulted and the run has to complete anyway, reporting it as
+      # signal=SIGSEGV while the other consumer still produces a full result.
+      - name: isolation tests
+        run: cargo test
+      # The library is tested above; this runs the shipped binary over the real
+      # corpus and checks the artifact it wrote, not the log it printed. A CI
+      # step that greps its own echoed output tests the echo.
+      - name: end to end over corpus A
+        run: |
+          python3 tools/gen_corpus.py
+          ABI_FAULTY_AT=40 cargo run --quiet -p abi-coordinator -- \
+            --worker null=./build/adapters/abi-worker-null \
+            --worker faulty=./build/adapters/abi-worker-faulty \
+            --cases corpus/a --limit 100 --out "$RUNNER_TEMP/run"
+          python3 tools/check_isolation_run.py "$RUNNER_TEMP/run/run.json" \
+            --cases 100 --crash-at 40
+      # The header's `sanitizers` is an array of names, and only a build with
+      # sanitizers on can tell that from one comma-joined string: everywhere
+      # else the list is empty and both shapes look alike. So the check is
+      # pointed at a build that has them on. The run doubles as the workers
+      # themselves under ASan and UBSan.
+      - name: header shape under the sanitizers
+        run: |
+          cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            -DABI_SANITIZERS=ON -DABI_WERROR=ON
+          cmake --build build-asan --target abi-worker-null
+          cargo run --quiet -p abi-coordinator -- \
+            --worker null=./build-asan/adapters/abi-worker-null \
+            --cases corpus/a --limit 20 --out "$RUNNER_TEMP/asan-run"
+          python3 tools/check_isolation_run.py "$RUNNER_TEMP/asan-run/run.json" \
+            --expect-sanitizers address,undefined
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
 
   windows-msvc:
     name: windows / msvc
