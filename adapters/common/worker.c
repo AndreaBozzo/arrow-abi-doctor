@@ -88,6 +88,23 @@ int abi_worker_read_cases(const char *path, AbiCaseList *out) {
   }
   while (fgets(line, sizeof(line), f)) {
     size_t n = strlen(line);
+    /*
+     * A line longer than the buffer would come back split, and both halves
+     * would then be treated as paths: one worker failure per fragment, each
+     * reporting a `case` string the coordinator never assigned, while the real
+     * case is counted not-run. Silently misattributing a result is worse than
+     * refusing the list, so this refuses the list.
+     */
+    if (n > 0 && line[n - 1] != '\n' && !feof(f)) {
+      fprintf(stderr,
+              "error: %s line %lu is longer than %lu bytes; a truncated path "
+              "would be reported as a case that was never assigned\n",
+              path, (unsigned long)(out->count + 1),
+              (unsigned long)sizeof(line) - 1);
+      fclose(f);
+      abi_case_list_free(out);
+      return 1;
+    }
     while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r'))
       line[--n] = 0;
     if (n == 0 || line[0] == '#') continue;
@@ -175,6 +192,35 @@ static void put_uint(FILE *out, const char *key, unsigned long long value,
   fprintf(out, "%llu", value);
 }
 
+/*
+ * A comma-separated build setting as a JSON array of one string per element.
+ * The build hands these over as a single "address,undefined", and emitting that
+ * verbatim would give `["address,undefined"]` -- one array element that every
+ * reader then has to know to split again.
+ */
+static void put_str_list(FILE *out, const char *csv) {
+  const char *start = csv;
+  int         first = 1;
+
+  fputc('[', out);
+  while (*start) {
+    const char *comma = strchr(start, ',');
+    size_t      len = comma ? (size_t)(comma - start) : strlen(start);
+    if (len > 0) {
+      char item[64];
+      if (len >= sizeof(item)) len = sizeof(item) - 1;
+      memcpy(item, start, len);
+      item[len] = 0;
+      if (!first) fputc(',', out);
+      put_str(out, item);
+      first = 0;
+    }
+    if (!comma) break;
+    start = comma + 1;
+  }
+  fputc(']', out);
+}
+
 static void put_bool(FILE *out, const char *key, int value, int first) {
   put_key(out, key, first);
   fputs(value ? "true" : "false", out);
@@ -192,13 +238,7 @@ void abi_worker_header(AbiWorker *w, const char *consumer,
   put_field(out, "os", ABI_WORKER_OS, 0);
   put_field(out, "compiler", ABI_WORKER_CC, 0);
   put_key(out, "sanitizers", 0);
-  if (ABI_WORKER_SANITIZERS[0]) {
-    fputc('[', out);
-    put_str(out, ABI_WORKER_SANITIZERS);
-    fputc(']', out);
-  } else {
-    fputs("[]", out);
-  }
+  put_str_list(out, ABI_WORKER_SANITIZERS);
   fputs("}\n", out);
   fflush(out);
 }

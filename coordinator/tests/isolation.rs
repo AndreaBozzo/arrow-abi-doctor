@@ -284,6 +284,86 @@ fn a_worker_that_cannot_start_makes_the_run_incomplete() {
     );
 }
 
+/// A case path too long for the worker's line buffer must stop the worker, not
+/// be split into two paths.
+///
+/// A silently truncated line becomes a `case` string the coordinator never
+/// assigned, while the real case is counted `not-run` -- a misattributed result
+/// dressed as a measurement. Refusing the list is the correct failure: the
+/// protocol gives exit 1 to a worker that cannot read its arguments.
+///
+/// This drives the worker directly. The coordinator writes the case list from
+/// real paths and so cannot produce this input, which is exactly why the worker
+/// has to defend against it on its own.
+#[test]
+fn an_over_long_case_list_line_is_refused_rather_than_split() {
+    let dir = scratch("longline");
+    let list = dir.join("cases.txt");
+    // Comfortably past the worker's 4096-byte buffer.
+    fs::write(&list, format!("{}.abicase\n", "x".repeat(5000))).expect("write case list");
+
+    let output = Command::new(built("adapters", "abi-worker-null"))
+        .arg("--cases")
+        .arg(&list)
+        .arg("--results")
+        .arg(dir.join("results.jsonl"))
+        .output()
+        .expect("run the worker");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "worker-level failure is exit 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("longer than"),
+        "unhelpful diagnostic: {stderr}"
+    );
+    // Nothing was reported, rather than something wrong being reported.
+    assert!(
+        !dir.join("results.jsonl").exists()
+            || fs::read_to_string(dir.join("results.jsonl"))
+                .unwrap()
+                .is_empty(),
+        "a refused case list must produce no results"
+    );
+}
+
+/// `sanitizers` is an array of one name per element, not one comma-joined
+/// string. The build hands the worker "address,undefined" as a single define,
+/// and emitting that verbatim gives `["address,undefined"]` -- which every
+/// reader of a run report would then have to know to split again.
+///
+/// Checked through the shape the header always has: a sanitizer-free build
+/// reports `[]`, and the element count matches the names, so a regression to
+/// the joined form shows up as one element where there should be two.
+#[test]
+fn the_header_reports_sanitizers_as_separate_names() {
+    let dir = scratch("header");
+    let cases = make_cases(&dir, 1);
+
+    let report = Run::execute(&config(&dir, cases, vec![null_worker()])).expect("run completes");
+    let header = report.workers[0].header.as_ref().expect("header line");
+
+    let sanitizers = header["sanitizers"]
+        .as_array()
+        .expect("sanitizers is an array");
+    for entry in sanitizers {
+        let name = entry.as_str().expect("each sanitizer is a string");
+        assert!(
+            !name.contains(','),
+            "sanitizers must be one name per element, got {name:?}"
+        );
+    }
+    // The rest of the header is what a report needs to identify the run at all.
+    assert_eq!(header["worker_protocol"], 1);
+    assert_eq!(header["consumer"], "null");
+    assert!(header["arch"].is_string());
+    assert!(header["os"].is_string());
+    assert!(header["compiler"].is_string());
+}
+
 /// The null consumer imports and releases, and the observer has to see that the
 /// release came from outside the producer's own callbacks. If this ever reports
 /// otherwise, the workers are measuring nothing and every result above is

@@ -6,8 +6,12 @@ against the library. This checks the *shipped binary*, over the real corpus, by
 reading the artifact it wrote rather than the output it printed: a CI step that
 greps its own echoed log is testing the echo.
 
-Usage:
-    check_isolation_run.py <run.json> --cases N --crash-at K
+Two independent checks, selected by flag:
+
+    --cases N --crash-at K      isolation: the crash was recorded and the other
+                                consumer still finished
+    --expect-sanitizers a,b     the header reports the sanitizers the build
+                                actually enabled, one name per array element
 
 `--crash-at` is the 1-based case index the faulty worker was told to fault on,
 so the expected number of surviving result lines is K - 1. That subtraction is
@@ -24,13 +28,7 @@ from pathlib import Path
 from typing import Any
 
 
-def fail(problems: list[str]) -> int:
-    for problem in problems:
-        print(f"MISMATCH: {problem}")
-    return 1
-
-
-def check(report: dict[str, Any], cases: int, crash_at: int) -> list[str]:
+def check_isolation(report: dict[str, Any], cases: int, crash_at: int) -> list[str]:
     problems: list[str] = []
     workers = {w["name"]: w for w in report["workers"]}
 
@@ -76,22 +74,70 @@ def check(report: dict[str, Any], cases: int, crash_at: int) -> list[str]:
     return problems
 
 
+def check_sanitizers(report: dict[str, Any], worker: str, expected: list[str]) -> list[str]:
+    """The header's `sanitizers` is one name per element, not one joined string.
+
+    Only a build with sanitizers on can tell the two apart: on an ordinary build
+    the list is empty and every shape looks alike. So this is pointed at a
+    sanitizer build, where `["address,undefined"]` and `["address",
+    "undefined"]` are visibly different things.
+    """
+    problems: list[str] = []
+    workers = {w["name"]: w for w in report["workers"]}
+    if worker not in workers:
+        return [f"no worker named {worker!r} in the report"]
+
+    header = workers[worker]["header"]
+    if header is None:
+        return [f"{worker} wrote no header line"]
+
+    found = header.get("sanitizers")
+    if found != expected:
+        problems.append(
+            f"{worker} header reports sanitizers {found!r}, expected {expected!r} "
+            "-- one name per element, not one comma-joined string"
+        )
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("report", type=Path, help="path to run.json")
-    parser.add_argument("--cases", type=int, required=True)
-    parser.add_argument("--crash-at", type=int, required=True)
+    parser.add_argument("--cases", type=int)
+    parser.add_argument("--crash-at", type=int)
+    parser.add_argument("--worker", default="null", help="worker for --expect-sanitizers")
+    parser.add_argument(
+        "--expect-sanitizers",
+        help="comma-separated names the header must report, e.g. address,undefined",
+    )
     args = parser.parse_args()
 
-    report = json.loads(args.report.read_text(encoding="utf-8"))
-    problems = check(report, args.cases, args.crash_at)
-    if problems:
-        return fail(problems)
+    isolation = args.cases is not None and args.crash_at is not None
+    if not isolation and args.expect_sanitizers is None:
+        parser.error("nothing to check: pass --cases with --crash-at, or --expect-sanitizers")
 
-    print(
-        f"ok  worker isolation: faulty crashed on case {args.crash_at} and was recorded, "
-        f"null still reported {args.cases}/{args.cases}"
-    )
+    report = json.loads(args.report.read_text(encoding="utf-8"))
+    problems: list[str] = []
+    done: list[str] = []
+
+    if isolation:
+        problems += check_isolation(report, args.cases, args.crash_at)
+        done.append(
+            f"isolation: faulty crashed on case {args.crash_at} and was recorded, "
+            f"null still reported {args.cases}/{args.cases}"
+        )
+    if args.expect_sanitizers is not None:
+        expected = [name for name in args.expect_sanitizers.split(",") if name]
+        problems += check_sanitizers(report, args.worker, expected)
+        done.append(f"header: {args.worker} reports sanitizers {expected}")
+
+    if problems:
+        for problem in problems:
+            print(f"MISMATCH: {problem}")
+        return 1
+
+    for line in done:
+        print(f"ok  {line}")
     return 0
 
 

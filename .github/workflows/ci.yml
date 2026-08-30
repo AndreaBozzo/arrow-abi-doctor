@@ -214,6 +214,24 @@ jobs:
             --cases corpus/a --limit 100 --out "$RUNNER_TEMP/run"
           python3 tools/check_isolation_run.py "$RUNNER_TEMP/run/run.json" \
             --cases 100 --crash-at 40
+      # The header's `sanitizers` is an array of names, and only a build with
+      # sanitizers on can tell that from one comma-joined string: everywhere
+      # else the list is empty and both shapes look alike. So the check is
+      # pointed at a build that has them on. The run doubles as the workers
+      # themselves under ASan and UBSan.
+      - name: header shape under the sanitizers
+        run: |
+          cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            -DABI_SANITIZERS=ON -DABI_WERROR=ON
+          cmake --build build-asan --target abi-worker-null
+          cargo run --quiet -p abi-coordinator -- \
+            --worker null=./build-asan/adapters/abi-worker-null \
+            --cases corpus/a --limit 20 --out "$RUNNER_TEMP/asan-run"
+          python3 tools/check_isolation_run.py "$RUNNER_TEMP/asan-run/run.json" \
+            --expect-sanitizers address,undefined
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
 
   windows-msvc:
     name: windows / msvc

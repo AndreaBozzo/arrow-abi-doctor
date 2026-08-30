@@ -41,7 +41,11 @@ between them. Splitting *those* two would test a different thing.
 
 - `--cases` — a text file, one case path per line. Blank lines and lines
   beginning with `#` are ignored. Paths are resolved relative to the process's
-  working directory, which the coordinator sets to the repository root.
+  working directory, which the coordinator sets to the repository root. A line
+  longer than the worker's buffer must be **refused, not truncated**: a split
+  path is reported as a case nobody assigned while the real one counts
+  `not-run`, which is a misattributed result wearing the clothes of a
+  measurement. The shared C runtime refuses at 4095 bytes.
 - `--results` — where the worker writes its result stream (below). The
   coordinator creates the containing directory; the worker truncates the file.
 - `--consumer` — optional, for workers that front more than one consumer. A
