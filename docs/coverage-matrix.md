@@ -302,7 +302,7 @@ that counts it as one is the failure this whole document exists to prevent.
 The only claim this model licenses:
 
 > exhaustive over the finite equivalence-class matrix defined in
-> `docs/coverage-matrix.md`, `coverage_model_ver` 1
+> `docs/coverage-matrix.md`, `coverage_model_ver` 2
 
 Always with the version. N is a function of the model version, so a coverage
 figure quoted without one is not comparable to anything.
@@ -359,9 +359,9 @@ not a surface believed to be correct.
 | dictionary-encoded types | M3; enabled in Corpus A only then |
 | nested types — list, struct, union, map | out of scope until after M2 |
 | run-end, `string_view`, `list_view` | out of scope until after M2 |
-| `null_count = -1` ("not computed") | legal and interesting, and a candidate for `coverage_model_ver` 2. Doubling the model for it is not worth the run time before there is a differential pair to run it against. |
+| `null_count = -1` ("not computed") | legal and interesting, and a candidate for a later `coverage_model_ver`. Doubling the model for it is not worth the run time before there is a differential pair to run it against. |
 | schema-surface variation — `flags`, metadata presence, `NULL` versus empty `name` | a real and separate defect class: DuckDB #21691 is a format-string crash reached before any data exists. It needs its own enumeration, over the schema rather than over the array, and this matrix is not it. |
-| a `NULL` **non**-validity buffer | the shape of Arrow #40898. Legal only at `length = 0`; at any other length the array is invalid and it is Corpus B1. Reaching the legal half needs a fifth `buffer-state` that NULLs a non-validity buffer, which is a candidate for `coverage_model_ver` 2. |
+| a `NULL` **non**-validity buffer | the shape of Arrow #40898. Legal only at `length = 0`; at any other length the array is invalid and it is Corpus B1. Reaching the legal half needs a fifth `buffer-state` that NULLs a non-validity buffer, which is a candidate for a later `coverage_model_ver`. |
 | element widths other than the five types in §1.1 | §1.1 |
 | lengths beyond `INT32_MAX` | not allocatable on the hosts this runs on; belongs to B1 as a declared-but-unbacked length |
 | alignment classes other than +1 and +4 | those two break different sets of the five types; a third would break the same set as one of them |
@@ -392,3 +392,4 @@ pre-declared model lies entirely in the fact that it was declared first.
 | 1 | 2026-08-24 | Initial freeze. Enumeration, constraints and N as above. |
 | 1 | 2026-08-29 | Editorial, no version bump: §3's size estimate replaced by measured figures from the first generator run, and §6's buffer-fill rule restated without its circular reference to the case id. No dimension, constraint or count changed, so figures computed before and after this edit remain comparable. |
 | 2 | 2026-08-29 | §1.5's `empty` class described an **invalid** array for `utf8`: a zero-byte offsets buffer, where the columnar format requires `length + 1` entries and the C Data Interface makes that the producer's obligation. Class A is conforming input, so the cell did not belong in the model as written. The class now keeps the single mandatory offsets entry and empties the values buffer instead; §2's constraint 6 keeps its predicate and gains an accurate justification. **N is unchanged at 5650** — no class was added, removed or merged, only one class's realization corrected — but the version moves because §1 changed and §8 does not make exceptions. Found by running the first generated corpus past two consumers: arrow-rs read out of bounds on the case, which was our defect and not its own. |
+| 2 | 2026-08-30 | Editorial, no version bump: §4's licensed-claim quotation still named version 1 after the bump above, and §7 offered two exclusions as "a candidate for `coverage_model_ver` 2" — a version that has since shipped without them. Neither is a dimension, a constraint or a count, so figures are unaffected. `tools/coverage_matrix.py --check` now reads the §4 quotation too: the header was gated and the sentence stating the claim was not, which is how it drifted. |

@@ -164,6 +164,23 @@ def check_document(accepted: list[Case], rejected: dict[str, int]) -> list[str]:
             f"document says coverage_model_ver = {doc_ver}, this script is {MODEL_VERSION}"
         )
 
+    # Section 4 quotes the only claim the model licenses, version included, and that
+    # quotation is what a report copies. The header above it was checked and the
+    # quotation was not, so it sat at version 1 for the whole of version 2 -- the
+    # drift this document exists to prevent, in the sentence that states the claim.
+    claim_ver = int(
+        sole_match(
+            text,
+            r"^> `docs/coverage-matrix\.md`, `coverage_model_ver` (\d+)$",
+            "the licensed-claim quotation in section 4",
+        )
+    )
+    if claim_ver != MODEL_VERSION:
+        problems.append(
+            f"section 4's licensed claim names coverage_model_ver {claim_ver}, "
+            f"this script is {MODEL_VERSION}"
+        )
+
     doc_n = int(sole_match(body, r"^N = \*\*(\d+)\*\*", "'N = **<number>**' in section 3"))
     if doc_n != len(accepted):
         problems.append(f"document says N = {doc_n}, enumeration gives {len(accepted)}")
