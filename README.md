@@ -222,7 +222,7 @@ migration window is 2026 and does not stay open long.
   allocator, event log, state machine and dual digest, worker isolation.
   Blocking constraint: `docs/coverage-matrix.md` published **within** M1 —
   defining it afterwards would invalidate M2-B. Now
-  [published and frozen](docs/coverage-matrix.md) at `coverage_model_ver` 1,
+  [published and frozen](docs/coverage-matrix.md) at `coverage_model_ver` 2,
   N = 5650; `tools/coverage_matrix.py --check` recomputes N in CI so the figure
   cannot drift from the model.
 - **M2** — 90 days. Succeeds on either: **(A)** a Corpus A disagreement between
