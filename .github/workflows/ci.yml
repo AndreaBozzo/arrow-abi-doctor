@@ -244,6 +244,13 @@ jobs:
         run: cmake --build build --config RelWithDebInfo
       - name: test
         run: ctest --test-dir build --build-config RelWithDebInfo --output-on-failure
+      # Windows has no signals: the coordinator reads a fault from the exception
+      # code in the exit status, 0xC0000005 where POSIX reports SIGSEGV. That is
+      # a separate code path, and the linux job never runs it. These are the
+      # same isolation tests, against the MSVC workers built above, including
+      # the one that really does crash a worker.
+      - name: isolation tests
+        run: cargo test
 
   windows-smoke:
     name: windows / msvc / dataprof + pyarrow smoke

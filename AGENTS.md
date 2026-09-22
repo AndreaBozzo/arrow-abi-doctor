@@ -227,8 +227,10 @@ measure is worth less than no harness.
   never touch those bytes.
 - **Commits and PRs carry no AI attribution** — no `Co-Authored-By` trailers, no
   "Generated with" footers.
-- Roadmap work is tracked in GitHub issues under the M1 milestone; the milestone
-  order in `README.md` is a dependency order, not a wish list.
+- Roadmap work is tracked in GitHub issues, one GitHub milestone per roadmap
+  milestone (M1 now, M3 for work filed early); M2 is a measurement window, not
+  a ticket list. The milestone order in `README.md` is a dependency order, not
+  a wish list.
 
 ## Traps that have cost real time
 

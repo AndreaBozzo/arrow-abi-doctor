@@ -1,7 +1,12 @@
 # observer — lifecycle instrumentation
 
-Lands in **M1**. Instrumented allocator, ordered event log, lifecycle state
-machine, dual digest.
+Half of it already exists, and not here. The instrumented allocator and the
+ordered event log with release depth have lived in libabi since M0.5
+(`libabi/include/abi/reconstruct.h`, `libabi/src/reconstruct.c`), because they
+have to sit inside the reconstructed producer's own callbacks. The dual digest
+is `libabi/src/digest.c` (issue #7). What remains for M1 is the lifecycle state
+machine, tracked with the CALLSEQ executor in issue #5, since the executor is
+what produces the paths it checks.
 
 Counters are not enough. `child_release_invoked = true` cannot distinguish
 

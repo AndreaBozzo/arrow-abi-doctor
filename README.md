@@ -3,11 +3,14 @@
 An adversarial, structure-aware harness for the Arrow **C Data Interface** and
 **C Stream Interface**, built around portable, minimized reproducers.
 
-**Status: M0.5.** The `.abicase` container format is implemented and verified
-across three platforms including a big-endian one; cases reconstruct into real
-`ArrowSchema` / `ArrowArray` structures, and a first adapter feeds them to
-`dataprof` and `pyarrow` with the lifecycle observed. Differential pairs, a
-reference validator and worker isolation are M1.
+**Status: M1, in progress.** The `.abicase` container format is implemented and
+verified across three platforms including a big-endian one; cases reconstruct
+into real `ArrowSchema` / `ArrowArray` structures with the lifecycle observed.
+The bounded conformance model is frozen, and its `direct` lifecycle is generated
+as Corpus A; a dual digest can describe either side of a handoff; and each
+consumer runs in its own supervised process, so a crash is a recorded result
+rather than the end of a run. The differential report, the reference validator,
+the stream interface and Corpus B1 are what M1 still owes.
 
 ---
 
@@ -225,7 +228,15 @@ migration window is 2026 and does not stay open long.
   defining it afterwards would invalidate M2-B. Now
   [published and frozen](docs/coverage-matrix.md) at `coverage_model_ver` 2,
   N = 5650; `tools/coverage_matrix.py --check` recomputes N in CI so the figure
-  cannot drift from the model.
+  cannot drift from the model. The first generated corpus, read back through
+  pyarrow and through dataprof's arrow-rs import, found
+  [apache/arrow-rs#10910](https://github.com/apache/arrow-rs/issues/10910): a
+  zero-length `Utf8` / `Binary` array at a non-zero offset imported with a
+  values buffer its own offsets overrun. It has a pure arrow-rs reproducer, and
+  was fixed upstream in [#10916](https://github.com/apache/arrow-rs/pull/10916),
+  merged 2026-08-30. The same run found a defect of ours — the model's `empty`
+  class described an invalid `utf8` array — corrected in
+  `coverage_model_ver` 2.
 - **M2** — 90 days. Succeeds on either: **(A)** a Corpus A disagreement between
   two consumers, classified as crash/leak or silent divergence, reproduced in a
   `.abicase` under 10 KB, filed upstream and accepted as valid; or **(B)** no
@@ -246,15 +257,16 @@ apparent. It only counts if the surface was defined beforehand.
 
 ```
 libabi/       C -- the .abicase format, the case model, reconstruction,
-              the lifecycle observer, the dual digest, generators (M1)
+              the lifecycle observer (instrumented allocator, event
+              log), the dual digest
 tools/        the abicase CLI, the cross-architecture check, the
               enumerator for the bounded conformance model, and the
               corpus generator that instantiates it
 refval/       nanoarrow binding, the reference validator          (M1)
 adapters/     per-engine consumers; null and faulty are C workers,
               dataprof landed first (M0.5)
-observer/     instrumented allocator, event log, state machine    (M1)
-coordinator/  Rust -- worker isolation, timeouts, artifacts       (M1)
+observer/     the lifecycle state machine                         (M1)
+coordinator/  Rust -- worker isolation, timeouts, artifacts
 corpus/       a/ b1/ b2/ c/ -- a/ is generated, not committed
 docs/         format spec, coverage matrix, digest rules, spec citations
 ```

@@ -1,10 +1,10 @@
 # Development environment
 
-Four languages, eventually: **C** today (`libabi`, `tools`, the adapter
+Four languages, eventually: **C** (`libabi`, `tools`, the C workers, the adapter
 extension), **C++** for the M1 Arrow C++ and DuckDB adapters, **Python** for the
-adapter harnesses, **Rust** for the coordinator and CLI (M1) and the arrow-rs
-adapter (M3). Configuration for all four is in the repo; only C and Python have
-anything to build yet.
+adapter harnesses, **Rust** for the coordinator, the planned CLI and the
+arrow-rs adapter (M3). Configuration for all four is in the repo; C, Python and
+Rust have something to build today, and C++ does not yet.
 
 The short version: **Windows builds and runs everything except sanitizers,
 Valgrind and big-endian.** Those three need WSL, and they are not optional
