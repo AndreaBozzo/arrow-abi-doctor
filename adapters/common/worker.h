@@ -65,13 +65,19 @@ void abi_worker_header(AbiWorker *w, const char *consumer, const char *version);
  * stay distinguishable from equal, or a consumer that returns nothing reads as
  * one that returned the data intact.
  */
+/*
+ * Room for "<status>: " plus the whole of AbiError.message, so a reason is never
+ * cut short -- a truncated reason is a report nobody can act on.
+ */
+#define ABI_WORKER_REASON_SIZE 256
+
 typedef struct {
   int       have_sent;
   AbiDigest sent;
-  char      sent_error[160];
+  char      sent_error[ABI_WORKER_REASON_SIZE];
   int       have_received;
   AbiDigest received;
-  char      received_error[160];
+  char      received_error[ABI_WORKER_REASON_SIZE];
 } AbiWorkerDigest;
 
 /* Fills one half from `schema` + `array`; a failure is recorded, not fatal. */
