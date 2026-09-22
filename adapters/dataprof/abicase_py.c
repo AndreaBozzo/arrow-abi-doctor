@@ -24,7 +24,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "abi/callseq.h"
 #include "abi/digest.h"
+#include "abi/lifecycle.h"
 #include "abi/reconstruct.h"
 #include "fixture.h"
 
@@ -46,6 +48,19 @@ typedef struct {
   int capsules_outstanding;
   /* The payload digest, taken before the case itself is freed. */
   char id[ABICASE_ID_HEX_SIZE];
+  /*
+   * Where the base structures live now. The reconstruction's own copies until
+   * move(), then storage this object owns (moved_*): after a move the
+   * reconstruction holds released shells, and exporting or digesting those
+   * would describe nothing that is handed over.
+   */
+  struct ArrowSchema *schema_at;
+  struct ArrowArray  *array_at;
+  struct ArrowSchema *moved_schema;
+  struct ArrowArray  *moved_array;
+  /* The case's CALLSEQ, kept past the case itself for the worker to run. */
+  AbiOp   *ops;
+  uint32_t op_count;
 } AbiCaseObject;
 
 /*
@@ -92,8 +107,14 @@ static void array_capsule_destructor(PyObject *capsule) {
   free(p);
 }
 
+/*
+ * The capsule takes the structure by an Arrow move -- logged, so the lifecycle
+ * state machine knows where it went -- and the capsule going to the consumer is
+ * the handoff. Not a strict location from there on: a consumer moves the
+ * structure into its own storage when it imports, and tells nobody.
+ */
 static PyObject *make_schema_capsule(AbiCaseObject *self) {
-  struct ArrowSchema *src = abi_reconstruction_schema(self->rec);
+  struct ArrowSchema *src = self->schema_at;
   SchemaCapsule      *p;
   PyObject           *cap;
 
@@ -105,25 +126,25 @@ static PyObject *make_schema_capsule(AbiCaseObject *self) {
   p = (SchemaCapsule *)calloc(1, sizeof(SchemaCapsule));
   if (p == NULL) return PyErr_NoMemory();
 
-  memcpy(&p->schema, src, sizeof(p->schema)); /* bitwise move */
-  src->release = NULL;                        /* source marked released */
+  abi_reconstruction_move_schema(self->rec, &p->schema, src);
   p->owner = (PyObject *)self;
   Py_INCREF(self);
 
   cap = PyCapsule_New(&p->schema, "arrow_schema", schema_capsule_destructor);
   if (cap == NULL) {
-    if (p->schema.release != NULL) p->schema.release(&p->schema);
+    abi_reconstruction_harness_release_schema(self->rec, &p->schema);
     Py_DECREF(self);
     free(p);
     return NULL;
   }
+  abi_reconstruction_note_schema_import(self->rec, &p->schema);
   self->schema_taken = 1;
   self->capsules_outstanding++;
   return cap;
 }
 
 static PyObject *make_array_capsule(AbiCaseObject *self) {
-  struct ArrowArray *src = abi_reconstruction_array(self->rec);
+  struct ArrowArray *src = self->array_at;
   ArrayCapsule      *p;
   PyObject          *cap;
 
@@ -139,18 +160,18 @@ static PyObject *make_array_capsule(AbiCaseObject *self) {
   p = (ArrayCapsule *)calloc(1, sizeof(ArrayCapsule));
   if (p == NULL) return PyErr_NoMemory();
 
-  memcpy(&p->array, src, sizeof(p->array));
-  src->release = NULL;
+  abi_reconstruction_move_array(self->rec, &p->array, src);
   p->owner = (PyObject *)self;
   Py_INCREF(self);
 
   cap = PyCapsule_New(&p->array, "arrow_array", array_capsule_destructor);
   if (cap == NULL) {
-    if (p->array.release != NULL) p->array.release(&p->array);
+    abi_reconstruction_harness_release_array(self->rec, &p->array);
     Py_DECREF(self);
     free(p);
     return NULL;
   }
+  abi_reconstruction_note_array_import(self->rec, &p->array);
   self->array_taken = 1;
   self->capsules_outstanding++;
   return cap;
@@ -253,10 +274,116 @@ static PyObject *AbiCase_lifecycle(PyObject *selfobj, PyObject *Py_UNUSED(a)) {
  * lifecycle report, so that "the consumer released it" and "we cleaned up after
  * a consumer that did not" stay distinguishable in the log.
  */
+static void release_everything(AbiCaseObject *self) {
+  /* Moved storage first: the reconstruction cannot see it, and after a move
+     its own copies are released shells that release_all() passes over. */
+  if (self->moved_array)
+    abi_reconstruction_harness_release_array(self->rec, self->moved_array);
+  if (self->moved_schema)
+    abi_reconstruction_harness_release_schema(self->rec, self->moved_schema);
+  abi_reconstruction_release_all(self->rec);
+}
+
 static PyObject *AbiCase_release_all(PyObject *selfobj,
                                      PyObject *Py_UNUSED(a)) {
-  abi_reconstruction_release_all(((AbiCaseObject *)selfobj)->rec);
+  release_everything((AbiCaseObject *)selfobj);
   Py_RETURN_NONE;
+}
+
+/* --- the call sequence ------------------------------------------------------
+ */
+
+/* [(op name, arg0, arg1), ...] -- empty for a case with no CALLSEQ. */
+static PyObject *AbiCase_callseq(PyObject *selfobj, PyObject *Py_UNUSED(a)) {
+  AbiCaseObject *self = (AbiCaseObject *)selfobj;
+  PyObject      *list = PyList_New(0);
+  uint32_t       i;
+
+  if (list == NULL) return NULL;
+  for (i = 0; i < self->op_count; i++) {
+    const AbiOp *op = &self->ops[i];
+    PyObject *t = Py_BuildValue("(sII)", abi_op_str((AbiOpCode)op->code),
+                                (unsigned int)op->arg0, (unsigned int)op->arg1);
+    if (t == NULL || PyList_Append(list, t) != 0) {
+      Py_XDECREF(t);
+      Py_DECREF(list);
+      return NULL;
+    }
+    Py_DECREF(t);
+  }
+  return list;
+}
+
+/*
+ * MOVE_STRUCT: both base structures to storage this object owns, per Arrow
+ * move semantics, logged. Refused once either has been handed over -- moving a
+ * structure out from under the consumer that holds it would be the harness
+ * breaking the handoff.
+ */
+static PyObject *AbiCase_move(PyObject *selfobj, PyObject *Py_UNUSED(a)) {
+  AbiCaseObject      *self = (AbiCaseObject *)selfobj;
+  struct ArrowSchema *s;
+  struct ArrowArray  *arr = NULL;
+
+  if (self->schema_taken || self->array_taken) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "move after export: the consumer already holds it");
+    return NULL;
+  }
+  s = (struct ArrowSchema *)calloc(1, sizeof(*s));
+  if (self->array_at) arr = (struct ArrowArray *)calloc(1, sizeof(*arr));
+  if (s == NULL || (self->array_at && arr == NULL)) {
+    free(s);
+    free(arr);
+    return PyErr_NoMemory();
+  }
+  abi_reconstruction_move_schema(self->rec, s, self->schema_at);
+  if (arr) abi_reconstruction_move_array(self->rec, arr, self->array_at);
+  free(self->moved_schema);
+  free(self->moved_array);
+  self->schema_at = self->moved_schema = s;
+  if (arr) self->array_at = self->moved_array = arr;
+  Py_RETURN_NONE;
+}
+
+/*
+ * The lifecycle state machine over this case's log (abi/lifecycle.h):
+ * {"strict": bool, "incomplete": bool, "count": n, "violations": [str, ...]}.
+ * Read it after every owner is gone -- the consumer's objects collected, and
+ * release_all() run.
+ */
+static PyObject *AbiCase_lifecycle_verdict(PyObject *selfobj, PyObject *args) {
+  AbiCaseObject      *self = (AbiCaseObject *)selfobj;
+  AbiLifecycleVerdict v;
+  PyObject           *list, *result;
+  int                 strict = 0;
+  uint32_t            i;
+  char                item[96];
+
+  if (!PyArg_ParseTuple(args, "|p", &strict)) return NULL;
+  abi_lifecycle_verify(abi_reconstruction_observer(self->rec), strict, &v);
+  list = PyList_New(0);
+  if (list == NULL) return NULL;
+  for (i = 0; i < v.count && i < ABI_LC_MAX_FINDINGS; i++) {
+    const AbiLifecycleFinding *f = &v.findings[i];
+    PyObject                  *s;
+    snprintf(item, sizeof(item), "%s %s %s",
+             abi_lifecycle_rule_str((AbiLifecycleRule)f->rule),
+             f->is_array ? "array" : "schema", f->path);
+    s = PyUnicode_FromString(item);
+    if (s == NULL || PyList_Append(list, s) != 0) {
+      Py_XDECREF(s);
+      Py_DECREF(list);
+      return NULL;
+    }
+    Py_DECREF(s);
+  }
+  result =
+      Py_BuildValue("{s:O,s:O,s:I,s:O}", "strict", strict ? Py_True : Py_False,
+                    "incomplete", v.incomplete ? Py_True : Py_False, "count",
+                    (unsigned int)v.count, "violations", list);
+  Py_DECREF(list);
+  return result;
 }
 
 /* --- digests ---------------------------------------------------------------
@@ -290,8 +417,8 @@ static PyObject *digest_dict(const struct ArrowSchema *schema,
  */
 static PyObject *AbiCase_digest(PyObject *selfobj, PyObject *Py_UNUSED(a)) {
   AbiCaseObject      *self = (AbiCaseObject *)selfobj;
-  struct ArrowSchema *schema = abi_reconstruction_schema(self->rec);
-  struct ArrowArray  *array = abi_reconstruction_array(self->rec);
+  struct ArrowSchema *schema = self->schema_at;
+  struct ArrowArray  *array = self->array_at;
 
   if (array == NULL) {
     PyErr_SetString(PyExc_ValueError,
@@ -314,8 +441,12 @@ static PyObject *AbiCase_case_id(PyObject *selfobj, PyObject *Py_UNUSED(a)) {
 
 static void AbiCase_dealloc(PyObject *selfobj) {
   AbiCaseObject *self = (AbiCaseObject *)selfobj;
+  release_everything(self);
   abi_reconstruction_free(self->rec);
   self->rec = NULL;
+  free(self->moved_schema);
+  free(self->moved_array);
+  free(self->ops);
   Py_TYPE(self)->tp_free(selfobj);
 }
 
@@ -332,6 +463,12 @@ static PyMethodDef AbiCase_methods[] = {
      "Physical and logical digest of what this case hands over."},
     {"case_id", AbiCase_case_id, METH_NOARGS,
      "The case id: 32 hex digits of the payload digest."},
+    {"callseq", AbiCase_callseq, METH_NOARGS,
+     "The case's CALLSEQ as [(op, arg0, arg1)]; empty when it has none."},
+    {"move", AbiCase_move, METH_NOARGS,
+     "MOVE_STRUCT: move both base structures, per Arrow move semantics."},
+    {"lifecycle_verdict", AbiCase_lifecycle_verdict, METH_VARARGS,
+     "The lifecycle state machine's findings; lifecycle_verdict(strict)."},
     {NULL, NULL, 0, NULL}};
 
 static PyTypeObject AbiCaseType = {
@@ -353,6 +490,8 @@ static PyObject *wrap_case(AbiCase *c) {
   AbiError           err;
   AbiStatus          st;
   char               id[ABICASE_ID_HEX_SIZE];
+  AbiOp             *ops = NULL;
+  uint32_t           op_count;
 
   if (c == NULL) {
     PyErr_SetString(PyExc_RuntimeError, "could not build the case");
@@ -360,9 +499,20 @@ static PyObject *wrap_case(AbiCase *c) {
   }
   memset(&err, 0, sizeof(err));
   abi_case_id(c, id);
+  /* The CALLSEQ outlives the case: the reconstruction does not carry it. */
+  op_count = c->op_count;
+  if (op_count) {
+    ops = (AbiOp *)malloc(op_count * sizeof(*ops));
+    if (ops == NULL) {
+      abi_case_free(c);
+      return PyErr_NoMemory();
+    }
+    memcpy(ops, c->ops, op_count * sizeof(*ops));
+  }
   st = abi_reconstruct(c, &rec, &err);
   abi_case_free(c); /* the reconstruction copies everything it needs */
   if (st != ABI_OK) {
+    free(ops);
     PyErr_Format(PyExc_RuntimeError, "reconstruct failed: %s (%s)",
                  abi_status_str(st), err.message);
     return NULL;
@@ -370,6 +520,7 @@ static PyObject *wrap_case(AbiCase *c) {
 
   obj = PyObject_New(AbiCaseObject, &AbiCaseType);
   if (obj == NULL) {
+    free(ops);
     abi_reconstruction_free(rec);
     return NULL;
   }
@@ -378,6 +529,12 @@ static PyObject *wrap_case(AbiCase *c) {
   obj->schema_taken = 0;
   obj->capsules_outstanding = 0;
   memcpy(obj->id, id, sizeof(obj->id));
+  obj->schema_at = abi_reconstruction_schema(rec);
+  obj->array_at = abi_reconstruction_array(rec);
+  obj->moved_schema = NULL;
+  obj->moved_array = NULL;
+  obj->ops = ops;
+  obj->op_count = op_count;
   return (PyObject *)obj;
 }
 

@@ -202,6 +202,22 @@ def test_outstanding_bytes_are_a_leak_only_with_no_live_capsule() -> None:
     assert cell_record(report, lines[1]["id"])["state"] == "agree"
 
 
+def test_a_lifecycle_violation_is_a_defect() -> None:
+    lines = [line(k) for k in DIRECT]
+    lines[0]["lifecycle"] = {"incomplete": False, "violations": ["never-released array /"]}
+    report = run(DIRECT, lines)
+    record = cell_record(report, lines[0]["id"])
+    assert record["route"] == "defect" and "never-released" in record["reason"], record
+
+
+def test_a_truncated_lifecycle_log_is_not_run() -> None:
+    lines = [line(k) for k in FULL]
+    lines[0]["lifecycle"] = {"incomplete": True, "violations": []}
+    report = run(FULL, lines)
+    assert cell_record(report, lines[0]["id"])["state"] == "not-run"
+    assert not report["claim"]["claimable"]
+
+
 def test_a_harness_error_is_not_run() -> None:
     lines = [line(k) for k in FULL]
     lines[0].update(status="error", detail="decode failed")

@@ -6,14 +6,16 @@ An adversarial, structure-aware harness for the Arrow **C Data Interface** and
 **Status: M1, in progress.** The `.abicase` container format is implemented and
 verified across three platforms including a big-endian one; cases reconstruct
 into real `ArrowSchema` / `ArrowArray` structures with the lifecycle observed.
-The bounded conformance model is frozen, and its `direct` lifecycle is generated
-as Corpus A; a dual digest can describe either side of a handoff; and each
-consumer runs in its own supervised process, so a crash is a recorded result
-rather than the end of a run. pyarrow and dataprof — Arrow C++ and arrow-rs —
-run under it as the first differential pair, and every run reduces to the
-per-cell states the coverage model defines. The reference validator, the stream
-interface, the native Arrow C++ and DuckDB adapters and Corpus B1 are what M1
-still owes.
+The bounded conformance model is frozen, and its `direct` and `moved` lifecycles
+are generated as Corpus A — 3760 of its 5650 cells — each run through its own
+call sequence, with the lifecycle judged as a path through a state machine
+rather than counted; a dual digest can describe either side of a handoff; and
+each consumer runs in its own supervised process, so a crash is a recorded
+result rather than the end of a run. pyarrow and dataprof — Arrow C++ and
+arrow-rs — run under it as the first differential pair, and every run reduces to
+the per-cell states the coverage model defines. The reference validator, the
+stream interface, the native Arrow C++ and DuckDB adapters and Corpus B1 are
+what M1 still owes.
 
 ---
 
@@ -268,7 +270,8 @@ tools/        the abicase CLI, the cross-architecture check, the
 refval/       nanoarrow binding, the reference validator          (M1)
 adapters/     per-engine consumers; null and faulty are C workers,
               dataprof landed first (M0.5)
-observer/     the lifecycle state machine                         (M1)
+observer/     notes only: the lifecycle state machine and the CALLSEQ
+              executor live in libabi (lifecycle.c, callseq.c)
 coordinator/  Rust -- worker isolation, timeouts, artifacts
 corpus/       a/ b1/ b2/ c/ -- a/ is generated, not committed
 docs/         format spec, coverage matrix, digest rules, spec citations

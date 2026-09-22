@@ -21,6 +21,12 @@ endif()
 
 option(ABI_WERROR      "Treat warnings as errors" OFF)
 option(ABI_SANITIZERS  "Build with ASan + UBSan" OFF)
+# CALLSEQ's USE_AFTER_RELEASE is a read through a released structure: genuine
+# undefined behaviour in the worker's own address space. Off, the executor
+# refuses the op by name. On, it performs it -- which belongs only in a worker
+# behind the coordinator, ideally under a sanitizer that aborts on it, and
+# never in the default CI jobs.
+option(ABI_ENABLE_USE_AFTER_RELEASE "Perform CALLSEQ USE_AFTER_RELEASE" OFF)
 
 add_library(abi_flags INTERFACE)
 if(MSVC)
@@ -39,6 +45,10 @@ else()
   if(ABI_WERROR)
     target_compile_options(abi_flags INTERFACE -Werror)
   endif()
+endif()
+
+if(ABI_ENABLE_USE_AFTER_RELEASE)
+  target_compile_definitions(abi_flags INTERFACE ABI_ENABLE_USE_AFTER_RELEASE)
 endif()
 
 if(ABI_SANITIZERS)

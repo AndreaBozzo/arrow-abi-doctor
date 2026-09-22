@@ -52,6 +52,23 @@ typedef enum {
    */
   ABI_EV_VIOLATION_CHILD_RELEASED_BY_CONSUMER,
   ABI_EV_HARNESS_RELEASED,
+  /*
+   * A base structure moved to a new address, per Arrow move semantics: bitwise
+   * copy, source marked released, no callback invoked. `addr` is where it went,
+   * which is where its one release is then expected.
+   */
+  ABI_EV_SCHEMA_MOVED,
+  ABI_EV_ARRAY_MOVED,
+  /* A base structure handed to the consumer, at `addr`. */
+  ABI_EV_SCHEMA_IMPORTED,
+  ABI_EV_ARRAY_IMPORTED,
+  /*
+   * The consumer refused a structure and left it live, so ownership came back
+   * to the harness. Without this, the harness cleaning up after a refusal
+   * would read as a consumer that took the structure and never released it.
+   */
+  ABI_EV_SCHEMA_RETURNED,
+  ABI_EV_ARRAY_RETURNED,
   ABI_EV__MAX
 } AbiEventKind;
 
@@ -62,8 +79,14 @@ typedef struct {
   uint32_t seq;
   uint8_t  kind;
   uint8_t  depth;       /* producer release-callback nesting at the time */
-  uint8_t  by_consumer; /* entered at depth 0, i.e. called from outside */
+  uint8_t  by_consumer; /* entered at depth 0, and not by the harness */
   char     path[ABI_EVENT_PATH_MAX];
+  /*
+   * The address of the structure the event concerns: where it was exported,
+   * moved to, handed over or released from. A release is only meaningful
+   * against the place the structure was last known to live.
+   */
+  uint64_t addr;
 } AbiEvent;
 
 typedef struct {
@@ -106,6 +129,47 @@ struct ArrowSchema *abi_reconstruction_schema(AbiReconstruction *r);
 struct ArrowArray  *abi_reconstruction_array(AbiReconstruction *r);
 
 const AbiObserver *abi_reconstruction_observer(const AbiReconstruction *r);
+
+/*
+ * Arrow move semantics on a base structure: `*dst = *src`, then `src` is marked
+ * released without its callback being invoked. Logged as SCHEMA_MOVED /
+ * ARRAY_MOVED with `dst` as the address, so the lifecycle state machine
+ * (abi/lifecycle.h) knows where the one legitimate release now has to come
+ * from. `src` must be live.
+ */
+AbiStatus abi_reconstruction_move_schema(AbiReconstruction  *r,
+                                         struct ArrowSchema *dst,
+                                         struct ArrowSchema *src);
+AbiStatus abi_reconstruction_move_array(AbiReconstruction *r,
+                                        struct ArrowArray *dst,
+                                        struct ArrowArray *src);
+
+/*
+ * Records that a base structure at `addr` was handed to the consumer. The
+ * handoff is the line between "the harness still owns this" and "releasing it
+ * is now the consumer's job", which is what the state machine judges a release
+ * against.
+ */
+void abi_reconstruction_note_schema_import(AbiReconstruction        *r,
+                                           const struct ArrowSchema *addr);
+void abi_reconstruction_note_array_import(AbiReconstruction       *r,
+                                          const struct ArrowArray *addr);
+
+/* The consumer refused the structure at `addr` and left it live. */
+void abi_reconstruction_note_schema_returned(AbiReconstruction        *r,
+                                             const struct ArrowSchema *addr);
+void abi_reconstruction_note_array_returned(AbiReconstruction       *r,
+                                            const struct ArrowArray *addr);
+
+/*
+ * Releases a live base structure the consumer left behind, wherever it now
+ * lives, as the harness: logged HARNESS_RELEASED and never attributed to the
+ * consumer. A no-op for one already released.
+ */
+void abi_reconstruction_harness_release_schema(AbiReconstruction  *r,
+                                               struct ArrowSchema *s);
+void abi_reconstruction_harness_release_array(AbiReconstruction *r,
+                                              struct ArrowArray *a);
 
 /*
  * Releases anything the consumer left live, logging it as HARNESS_RELEASED, and

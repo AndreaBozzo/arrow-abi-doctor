@@ -430,7 +430,12 @@ op[op_count]:  code  u16
 
 The call sequence drives Corpus B2 and C: it is the script the harness follows
 when exercising the case, rather than the default import/consume/release path.
-Encoded and validated in M0; executed from M1, when the observer exists.
+Encoded and validated in M0; executed from M1 by `libabi/src/callseq.c`
+against a consumer, with the lifecycle judged by the state machine in
+`libabi/src/lifecycle.c`. An op a consumer cannot perform is refused by name,
+never replaced by the default path. `USE_AFTER_RELEASE` is performed only in a
+build configured with `-DABI_ENABLE_USE_AFTER_RELEASE=ON`, since it is undefined
+behaviour in the worker's own process.
 
 | Code | Op | `arg0` | `arg1` |
 |---|---|---|---|

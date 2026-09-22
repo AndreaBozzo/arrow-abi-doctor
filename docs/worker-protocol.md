@@ -154,6 +154,35 @@ This field was added after `worker_protocol` 1 was published, and it is
 additive: a reader that ignores it loses nothing it had before, and a worker
 that omits it is still a conforming v1 worker. `worker_protocol` stays 1.
 
+### The `callseq` and `lifecycle` objects
+
+Also optional and additive, on the same terms. A worker that runs a case's
+call sequence (`docs/abicase-format.md` §8) says what it ran and how the
+structures fared:
+
+```json
+"callseq":   {"outcome": "accepted", "defaulted": false, "op_count": 4, "executed": 4,
+              "ops": ["MOVE_STRUCT", "IMPORT_SCHEMA", "IMPORT_ARRAY", "RELEASE_BASE"]},
+"lifecycle": {"strict": true, "incomplete": false, "count": 0, "violations": []}
+```
+
+- `callseq.outcome` is `accepted`, `rejected` (the consumer refused an import),
+  `unsupported` (an op this worker or build cannot perform) or `invalid` (the
+  sequence makes no sense, such as a release before any handoff). The last two
+  go out with `status: error`: the case did not run as written, so nothing
+  about the consumer was measured, and a report counts it `not-run`. An op the
+  worker cannot perform is refused by name, never replaced by the default path.
+- `ops` lists what actually ran, in order; `defaulted` means the case had no
+  call sequence and the default import / import / release path ran.
+- `lifecycle.violations` are the state machine's findings (`abi/lifecycle.h`),
+  one string each: rule, tree, path — `not-released-by-consumer array /`. Any
+  entry is a defect. `strict` says whether a release was also judged against
+  the address the structure was last moved or handed to, which is only sound
+  when every move is logged: true for a consumer that is ours, false for a real
+  engine that moves structures into its own storage on import. `incomplete`
+  means the event log overflowed, and a verdict over a truncated path is no
+  verdict at all.
+
 ## Exit
 
 | Exit code | Meaning |

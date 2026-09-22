@@ -49,11 +49,12 @@ so a tuple stamped into the case would make every id unique by construction and
 the uniqueness check meaningless. A duplicate id means two cells of the model
 built the same case, which is a finding about the model (coverage-matrix §8).
 
-Only the `direct` lifecycle is constructible today — 1880 of N = 5650.
-`moved`
-waits on the class-A subset of the CALLSEQ executor (#5) and the three stream
-lifecycles on the C Stream Interface (#4); the generator counts what it skipped
-rather than passing over it silently.
+Two lifecycles are constructible today, `direct` and `moved` — 3760 of
+N = 5650. A `moved` case is the `direct` array with `MOVE_STRUCT` ahead of the
+handoff in its CALLSEQ, which the executor performs and the lifecycle state
+machine checks. The three stream lifecycles wait on the C Stream Interface
+(#4); the generator counts what it skipped rather than passing over it
+silently.
 
 `b1/`, `b2/` and `c/` are enumerated defects rather than a product of
 equivalence classes, so they are hand-written and committed, and they are not

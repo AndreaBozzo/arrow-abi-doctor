@@ -104,13 +104,14 @@ static const char *const LIFECYCLE_NAMES[] = {"direct", "moved", "streamed",
                                               "early-release", "EOF"};
 
 /*
- * Lifecycles this generator can build. `moved` needs the class-A subset of the
- * CALLSEQ executor (issue #5) and the three stream lifecycles need the C Stream
- * Interface (issue #4). They are skipped and counted, never silently dropped: a
- * partial corpus that does not say which cells it left out is a coverage claim
- * with a hole in it.
+ * Lifecycles this generator can build. The three stream lifecycles need the C
+ * Stream Interface (issue #4). They are skipped and counted, never silently
+ * dropped: a partial corpus that does not say which cells it left out is a
+ * coverage claim with a hole in it.
  */
-static int lifecycle_supported(GenLifecycle l) { return l == GL_DIRECT; }
+static int lifecycle_supported(GenLifecycle l) {
+  return l == GL_DIRECT || l == GL_MOVED;
+}
 
 #define COUNT_OF(a) (sizeof(a) / sizeof((a)[0]))
 
@@ -557,6 +558,17 @@ static AbiCase *build_case(const GenTuple *t) {
   if (abi_array_add_child(c, root_a, a) != ABI_OK) goto fail;
   abi_case_set_array(c, root_a);
 
+  /*
+   * `moved` is the same array, moved before it is handed over: bitwise copy to
+   * new storage, source marked released, no callback (coverage-matrix 1.7).
+   * The CALLSEQ executor performs it and the lifecycle state machine checks
+   * that the one release then comes from the new location. The op is part of
+   * the payload, so the two lifecycles of one array are two case ids.
+   */
+  if (t->lifecycle == GL_MOVED &&
+      abi_case_add_op(c, ABI_OP_MOVE_STRUCT, 0, 0) != ABI_OK) {
+    goto fail;
+  }
   if (abi_case_add_op(c, ABI_OP_IMPORT_SCHEMA, 0, 0) != ABI_OK ||
       abi_case_add_op(c, ABI_OP_IMPORT_ARRAY, 0, 0) != ABI_OK ||
       abi_case_add_op(c, ABI_OP_RELEASE_BASE, 0, 0) != ABI_OK) {

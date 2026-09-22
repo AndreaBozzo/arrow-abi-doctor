@@ -141,6 +141,7 @@ static void run_drop_offset(AbiWorker *w, const char *path) {
   struct ArrowSchema *schema;
   struct ArrowArray  *array, *view;
   AbiWorkerDigest     dg;
+  AbiWorkerExtras     x;
   char                id[ABICASE_ID_HEX_SIZE];
   char                detail[256];
 
@@ -151,14 +152,14 @@ static void run_drop_offset(AbiWorker *w, const char *path) {
   st = abi_case_read_file(path, &c, &err);
   if (st != ABI_OK) {
     snprintf(detail, sizeof(detail), "%s: %s", abi_status_str(st), err.message);
-    abi_worker_result(w, path, NULL, "error", detail, NULL, NULL);
+    abi_worker_result(w, path, NULL, "error", detail, NULL);
     return;
   }
   abi_case_id(c, id);
   st = abi_reconstruct(c, &r, &err);
   if (st != ABI_OK) {
     snprintf(detail, sizeof(detail), "%s: %s", abi_status_str(st), err.message);
-    abi_worker_result(w, path, id, "error", detail, NULL, NULL);
+    abi_worker_result(w, path, id, "error", detail, NULL);
     abi_case_free(c);
     return;
   }
@@ -182,9 +183,11 @@ static void run_drop_offset(AbiWorker *w, const char *path) {
   if (array && array->release) array->release(array);
   if (schema && schema->release) schema->release(schema);
   abi_reconstruction_release_all(r);
+  memset(&x, 0, sizeof(x));
+  x.observer = abi_reconstruction_observer(r);
+  x.digest = &dg;
   abi_worker_result(w, path, id, "accepted",
-                    "offset dropped on the way back; not a real consumer",
-                    abi_reconstruction_observer(r), &dg);
+                    "offset dropped on the way back; not a real consumer", &x);
   abi_reconstruction_free(r);
   abi_case_free(c);
 }
@@ -217,7 +220,7 @@ int main(int argc, char **argv) {
     for (i = 0; i < list.count; i++) {
       if (i + 1 == crash_at) fail_now(mode);
       abi_worker_result(&w, list.paths[i], NULL, "accepted",
-                        "not a real consumer", NULL, NULL);
+                        "not a real consumer", NULL);
     }
   }
 

@@ -14,7 +14,9 @@
 #include <stddef.h>
 #include <stdio.h>
 
+#include "abi/callseq.h"
 #include "abi/digest.h"
+#include "abi/lifecycle.h"
 #include "abi/reconstruct.h"
 
 #define ABI_WORKER_PROTOCOL 1
@@ -87,13 +89,39 @@ void abi_worker_digest_received(AbiWorkerDigest *d, const struct ArrowSchema *s,
                                 const struct ArrowArray *a);
 
 /*
- * One case, one line, flushed before returning. `obs` may be NULL when the
- * case never got as far as a reconstruction, and `dg` when nothing was
- * digested. `status` is "accepted", "rejected" or "error" -- and "rejected" is
- * a compatibility entry, not a defect, so nothing here treats it as a failure.
+ * The optional blocks of a result line. Each is written when non-NULL: the
+ * observer once a reconstruction exists, the digest when anything was
+ * digested, the call sequence when it was executed, the lifecycle verdict when
+ * the log was judged.
+ */
+typedef struct {
+  const AbiObserver         *observer;
+  const AbiWorkerDigest     *digest;
+  const AbiCallseqResult    *callseq;
+  const AbiLifecycleVerdict *lifecycle;
+  int                        lifecycle_strict;
+} AbiWorkerExtras;
+
+/*
+ * One case, one line, flushed before returning. `x` may be NULL when the case
+ * never got as far as a reconstruction. `status` is "accepted", "rejected" or
+ * "error" -- and "rejected" is a compatibility entry, not a defect, so nothing
+ * here treats it as a failure.
  */
 void abi_worker_result(AbiWorker *w, const char *case_path, const char *id,
                        const char *status, const char *detail,
-                       const AbiObserver *obs, const AbiWorkerDigest *dg);
+                       const AbiWorkerExtras *x);
+
+/*
+ * Runs one case the standard way for an in-process C consumer: read,
+ * reconstruct, digest what is handed over, execute the case's CALLSEQ against
+ * `consumer`, clean up, judge the lifecycle strictly -- every move is the
+ * executor's own, so every release has a known address -- and write the line.
+ * `received` is filled by the consumer when it hands something back, or left
+ * zeroed.
+ */
+void abi_worker_run_case(AbiWorker *w, const char *case_path,
+                         const AbiConsumer *consumer,
+                         AbiWorkerDigest   *digest_out);
 
 #endif /* ABI_WORKER_H */

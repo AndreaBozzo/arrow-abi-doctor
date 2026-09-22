@@ -17,7 +17,8 @@ exactly one §4 state:
 and prints the one claim the model licenses only when `not-run` and
 `inexpressible` are both zero.
 
-What counts as a defect is §5: a crash, a leak, a lifecycle violation, a caught
+What counts as a defect is §5: a crash, a leak, a lifecycle violation -- counted
+by the observer or named by the state machine of abi/lifecycle.h -- a caught
 panic, or a `logical` digest mismatch is a bug under every expected outcome; a
 rejection of an `ACCEPT` cell is a defect; a clean rejection of an `EITHER` cell
 is not. That last one is then *routed*: to the compatibility matrix when
@@ -115,6 +116,13 @@ def classify(  # noqa: PLR0911
     obs = line.get("observer") or {}
     if obs.get("violations", 0):
         return "disagree", "defect", f"{obs['violations']} lifecycle violation(s)"
+    lifecycle = line.get("lifecycle") or {}
+    if lifecycle.get("incomplete"):
+        # The event log overflowed, so the state machine judged a truncated
+        # path: no verdict either way, which is a hole, not a pass.
+        return "not-run", None, "lifecycle log truncated"
+    if lifecycle.get("violations"):
+        return "disagree", "defect", "lifecycle: " + "; ".join(lifecycle["violations"])
     if obs.get("outstanding", 0) and not obs.get("capsules_outstanding", 0):
         return "disagree", "defect", f"leak: {obs['outstanding']} bytes outstanding"
 

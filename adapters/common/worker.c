@@ -244,10 +244,11 @@ void abi_worker_header(AbiWorker *w, const char *consumer,
 }
 
 /*
- * A release entered at depth 0 was entered from outside our code, which is the
- * only way to tell "the consumer released it" from "we cleaned up after a
- * consumer that did not". A counter cannot make that distinction; see
- * abi/reconstruct.h.
+ * A release attributed to the consumer: entered at depth 0, from outside the
+ * producer's own callbacks, and not by the harness's cleanup, which marks its
+ * own. That is the only way to tell "the consumer released it" from "we cleaned
+ * up after a consumer that did not"; a counter cannot make the distinction.
+ * See abi/reconstruct.h.
  */
 static int released_by_consumer(const AbiObserver *o) {
   uint32_t i;
@@ -362,9 +363,55 @@ static void put_digest(FILE *out, const AbiWorkerDigest *d) {
   fputc('}', out);
 }
 
+/* What ran, in order, and how it ended (abi/callseq.h). */
+static void put_callseq(FILE *out, const AbiCallseqResult *cs) {
+  uint32_t i;
+  uint32_t shown = cs->executed < ABI_CALLSEQ_TRACE_MAX ? cs->executed
+                                                        : ABI_CALLSEQ_TRACE_MAX;
+
+  put_key(out, "callseq", 0);
+  fputc('{', out);
+  put_field(out, "outcome", abi_callseq_outcome_str(cs->outcome), 1);
+  put_bool(out, "defaulted", cs->defaulted, 0);
+  put_uint(out, "op_count", (unsigned long long)cs->op_count, 0);
+  put_uint(out, "executed", (unsigned long long)cs->executed, 0);
+  put_key(out, "ops", 0);
+  fputc('[', out);
+  for (i = 0; i < shown; i++) {
+    if (i) fputc(',', out);
+    put_str(out, abi_op_str((AbiOpCode)cs->trace[i]));
+  }
+  fputc(']', out);
+  fputc('}', out);
+}
+
+/* The state machine's findings, one string each: rule, tree, path. */
+static void put_lifecycle(FILE *out, const AbiLifecycleVerdict *v, int strict) {
+  uint32_t i;
+  char     item[96];
+
+  put_key(out, "lifecycle", 0);
+  fputc('{', out);
+  put_bool(out, "strict", strict, 1);
+  put_bool(out, "incomplete", v->incomplete, 0);
+  put_uint(out, "count", (unsigned long long)v->count, 0);
+  put_key(out, "violations", 0);
+  fputc('[', out);
+  for (i = 0; i < v->count && i < ABI_LC_MAX_FINDINGS; i++) {
+    const AbiLifecycleFinding *f = &v->findings[i];
+    snprintf(item, sizeof(item), "%s %s %s",
+             abi_lifecycle_rule_str((AbiLifecycleRule)f->rule),
+             f->is_array ? "array" : "schema", f->path);
+    if (i) fputc(',', out);
+    put_str(out, item);
+  }
+  fputc(']', out);
+  fputc('}', out);
+}
+
 void abi_worker_result(AbiWorker *w, const char *case_path, const char *id,
                        const char *status, const char *detail,
-                       const AbiObserver *obs, const AbiWorkerDigest *dg) {
+                       const AbiWorkerExtras *x) {
   FILE *out = w->out;
 
   fputc('{', out);
@@ -372,8 +419,78 @@ void abi_worker_result(AbiWorker *w, const char *case_path, const char *id,
   put_field(out, "id", id ? id : "", 0);
   put_field(out, "status", status, 0);
   put_field(out, "detail", detail, 0);
-  if (obs) put_observer(out, obs);
-  if (dg) put_digest(out, dg);
+  if (x && x->observer) put_observer(out, x->observer);
+  if (x && x->digest) put_digest(out, x->digest);
+  if (x && x->callseq) put_callseq(out, x->callseq);
+  if (x && x->lifecycle) put_lifecycle(out, x->lifecycle, x->lifecycle_strict);
   fputs("}\n", out);
   fflush(out);
+}
+
+void abi_worker_run_case(AbiWorker *w, const char *case_path,
+                         const AbiConsumer *consumer,
+                         AbiWorkerDigest   *digest_out) {
+  AbiCase            *c = NULL;
+  AbiReconstruction  *r = NULL;
+  AbiError            err;
+  AbiStatus           st;
+  AbiCallseqResult    cs;
+  AbiLifecycleVerdict lc;
+  AbiWorkerExtras     x;
+  const char         *status;
+  char                id[ABICASE_ID_HEX_SIZE];
+  char                detail[ABI_WORKER_REASON_SIZE];
+
+  memset(&err, 0, sizeof(err));
+  memset(id, 0, sizeof(id));
+  memset(&x, 0, sizeof(x));
+
+  st = abi_case_read_file(case_path, &c, &err);
+  if (st != ABI_OK) {
+    snprintf(detail, sizeof(detail), "%s: %s", abi_status_str(st), err.message);
+    abi_worker_result(w, case_path, NULL, "error", detail, NULL);
+    return;
+  }
+  abi_case_id(c, id);
+  st = abi_reconstruct(c, &r, &err);
+  if (st != ABI_OK) {
+    snprintf(detail, sizeof(detail), "%s: %s", abi_status_str(st), err.message);
+    abi_worker_result(w, case_path, id, "error", detail, NULL);
+    abi_case_free(c);
+    return;
+  }
+
+  /* What is handed over, digested before the handoff. */
+  abi_worker_digest_sent(digest_out, abi_reconstruction_schema(r),
+                         abi_reconstruction_array(r));
+  abi_callseq_run(r, c, consumer, &cs);
+  /*
+   * release_all() before judging: it releases whatever is still live at the
+   * reconstruction's own address and logs it as the harness's, and a verdict
+   * read first would miss exactly the structures nobody released.
+   */
+  abi_reconstruction_release_all(r);
+  abi_lifecycle_verify(abi_reconstruction_observer(r), 1, &lc);
+
+  switch (cs.outcome) {
+  case ABI_CALLSEQ_ACCEPTED: status = "accepted"; break;
+  case ABI_CALLSEQ_REJECTED: status = "rejected"; break;
+  default:
+    /* The case did not run as written, so nothing about the consumer was
+       measured: a harness error, which the report counts as not-run. */
+    status = "error";
+    break;
+  }
+  snprintf(detail, sizeof(detail), "%s",
+           cs.detail[0] ? cs.detail : "ran its call sequence");
+
+  x.observer = abi_reconstruction_observer(r);
+  x.digest = digest_out;
+  x.callseq = &cs;
+  x.lifecycle = &lc;
+  x.lifecycle_strict = 1;
+  abi_worker_result(w, case_path, id, status, detail, &x);
+
+  abi_reconstruction_free(r);
+  abi_case_free(c);
 }

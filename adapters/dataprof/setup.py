@@ -25,6 +25,8 @@ LIBABI_SOURCES = [
     "decode.c",
     "reconstruct.c",
     "digest.c",
+    "lifecycle.c",
+    "callseq.c",
 ]
 
 sources = (

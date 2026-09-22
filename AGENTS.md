@@ -38,6 +38,7 @@ ctest --test-dir build --output-on-failure
 ./build/libabi/abicase_tests
 ./build/libabi/reconstruct_tests
 ./build/libabi/digest_tests
+./build/libabi/callseq_tests
 
 # sanitizers and Valgrind -- WSL only, no runtime on MinGW
 cmake -S . -B build/asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DABI_SANITIZERS=ON -DABI_WERROR=ON
@@ -121,6 +122,8 @@ validate.c    structural + canonicality + class rules
 encode.c      AbiCase -> canonical bytes      decode.c  bytes -> AbiCase
 reconstruct.c AbiCase -> real ArrowSchema/ArrowArray, plus the observer
 digest.c      physical and logical digests of a reconstruction (docs/digest.md)
+callseq.c     run a case's CALLSEQ against a consumer (abi/callseq.h)
+lifecycle.c   judge the event log as a path through a state machine
 adapters/     present a reconstruction to a consumer (dataprof: PyCapsules)
 coordinator/  Rust -- one process per consumer, so a crash is a datum
 ```

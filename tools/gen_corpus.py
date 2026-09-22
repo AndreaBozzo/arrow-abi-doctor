@@ -30,11 +30,10 @@ ROOT = Path(__file__).resolve().parent.parent
 # case_id, bytes, then the seven dimensions of the model tuple.
 MANIFEST_FIELDS = 9
 
-# Lifecycles abicase-gen can build today. `moved` waits on the class-A subset of
-# the CALLSEQ executor (issue #5); the three stream lifecycles wait on the C
-# Stream Interface (issue #4). The generator has the same list and skips the
+# Lifecycles abicase-gen can build today. The three stream lifecycles wait on the
+# C Stream Interface (issue #4). The generator has the same list and skips the
 # rest, so this one exists to state what the corpus therefore does *not* cover.
-SUPPORTED_LIFECYCLES = ("direct",)
+SUPPORTED_LIFECYCLES = ("direct", "moved")
 
 
 def find_generator(explicit: str | None) -> Path:
@@ -168,7 +167,7 @@ def main() -> int:
     covered = sum(1 for case in accepted if case.lifecycle in SUPPORTED_LIFECYCLES)
     print(
         f"ok  {covered} of N = {len(accepted)} model cases generated "
-        f"({covered * 100 // len(accepted)}%); the rest need issues #4 and #5"
+        f"({covered * 100 // len(accepted)}%); the rest need the C Stream Interface, issue #4"
     )
     return 0
 

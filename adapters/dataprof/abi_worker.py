@@ -139,8 +139,22 @@ def describe(exc: BaseException) -> str:
     return f"{type(exc).__module__}.{type(exc).__qualname__}: {exc}"
 
 
-def consume(consumer: str, case: Any, digest: dict[str, Any]) -> str:
-    """Hand the case to the consumer; returns the `detail` of an accepted line."""
+# A case with no CALLSEQ runs the default path, as the C executor does.
+DEFAULT_CALLSEQ = [("IMPORT_SCHEMA", 0, 0), ("IMPORT_ARRAY", 0, 0), ("RELEASE_BASE", 0, 0)]
+# What this worker can do. Anything else is refused by name before anything
+# runs -- never replaced by the default path, which would report a case as run
+# when the part that made it a case was skipped. The class C ops need a
+# consumer that can be told to misbehave, and neither of these can.
+PERFORMED = ("NOP", "MOVE_STRUCT", "IMPORT_SCHEMA", "IMPORT_ARRAY", "RELEASE_BASE")
+
+
+def import_into(consumer: str, case: Any, digest: dict[str, Any]) -> tuple[str, Any]:
+    """Hand both base structures over. Returns the detail and what the consumer holds.
+
+    Both consumers take the schema and the array together, through the capsule
+    protocol, so this is the IMPORT_ARRAY of a sequence whose IMPORT_SCHEMA only
+    armed it.
+    """
     import _abicase
 
     if consumer == "pyarrow":
@@ -151,12 +165,24 @@ def consume(consumer: str, case: Any, digest: dict[str, Any]) -> str:
             digest["received"] = _abicase.digest(*batch.__arrow_c_array__())
         except ValueError as exc:
             digest["received_error"] = str(exc)
-        return f"{batch.num_rows} rows x {batch.num_columns} cols"
+        return f"{batch.num_rows} rows x {batch.num_columns} cols", batch
 
     import dataprof
 
     report = dataprof.profile(case, name="abicase")
-    return f"{report.rows} rows x {report.columns} cols, profiled"
+    return f"{report.rows} rows x {report.columns} cols, profiled", report
+
+
+def inject(fault: tuple[str, int] | None, index: int) -> None:
+    if not fault or fault[1] != index:
+        return
+    if fault[0] == "panic":
+        raise InjectedPanic("injected: stands in for a pyo3 PanicException")
+    import faulthandler
+
+    # A real SIGSEGV, not an exception. Private but long-standing CPython API,
+    # used by its own test suite; typeshed does not list it.
+    faulthandler._sigsegv()  # type: ignore[attr-defined]
 
 
 def run_case(consumer: str, path: str, index: int, fault: tuple[str, int] | None) -> dict[str, Any]:
@@ -174,33 +200,62 @@ def run_case(consumer: str, path: str, index: int, fault: tuple[str, int] | None
     except ValueError as exc:
         digest["sent_error"] = str(exc)
 
+    ops = case.callseq()
+    callseq: dict[str, Any] = {
+        "outcome": "accepted",
+        "defaulted": not ops,
+        "op_count": len(ops or DEFAULT_CALLSEQ),
+        "executed": 0,
+        "ops": [],
+    }
+    names = [name for name, _a0, _a1 in ops or DEFAULT_CALLSEQ]
+    refused = next((n for n in names if n not in PERFORMED), None)
+    if refused is None and "IMPORT_SCHEMA" in names and "IMPORT_ARRAY" not in names:
+        refused = "IMPORT_SCHEMA"  # a schema-only handoff: neither consumer takes one
+
     panicked = False
-    try:
-        if fault and fault[1] == index:
-            if fault[0] == "panic":
-                raise InjectedPanic("injected: stands in for a pyo3 PanicException")
-            import faulthandler
+    status, detail = "accepted", "ran its call sequence"
+    if refused is not None:
+        callseq["outcome"] = "unsupported"
+        status = "error"
+        detail = f"{refused}: not performed by the {consumer} worker"
+    else:
+        held: Any = None
+        for name in names:
+            if name == "MOVE_STRUCT":
+                case.move()
+            elif name == "IMPORT_ARRAY":
+                try:
+                    inject(fault, index)
+                    # BaseException: pyo3's PanicException derives from it so
+                    # that a Rust panic is not swallowed by `except Exception`,
+                    # and a consumer that panics has to be a recorded
+                    # rejection, not the end of the worker.
+                    detail, held = import_into(consumer, case, digest)
+                except BaseException as exc:  # noqa: BLE001 -- see above; load-bearing
+                    detail, status = describe(exc), "rejected"
+                    callseq["outcome"] = "rejected"
+                    # Not an Exception means a panic crossed the FFI boundary:
+                    # the worker survived it, so the line says `rejected`, but
+                    # it is not the clean refusal that word means elsewhere
+                    # (dataprof#609 was one of these).
+                    panicked = not isinstance(exc, Exception)
+                    digest.pop("received", None)
+                    digest.pop("received_error", None)
+                    break
+            elif name == "RELEASE_BASE":
+                held = None  # the consumer's objects go, and with them its hold
+            callseq["executed"] += 1
+            callseq["ops"].append(name)
+        # Whatever the sequence left in the consumer's hands goes with the case:
+        # the reference is what kept it alive, so dropping it is the release.
+        del held
 
-            # A real SIGSEGV, not an exception. Private but long-standing CPython
-            # API, used by its own test suite; typeshed does not list it.
-            faulthandler._sigsegv()  # type: ignore[attr-defined]
-        # BaseException: pyo3's PanicException derives from it so that a Rust
-        # panic is not swallowed by `except Exception`, and a consumer that
-        # panics has to be a recorded rejection, not the end of the worker.
-        detail = consume(consumer, case, digest)
-        status = "accepted"
-    except BaseException as exc:  # noqa: BLE001 -- see above; load-bearing
-        detail, status = describe(exc), "rejected"
-        # Not an Exception means a panic crossed the FFI boundary: the worker
-        # survived it, so the line says `rejected`, but it is not the clean
-        # refusal that word means elsewhere (dataprof#609 was one of these).
-        panicked = not isinstance(exc, Exception)
-        digest.pop("received", None)
-        digest.pop("received_error", None)
-
-    # Every consumer object is out of scope by now, so the capsules have been
-    # collected and released what the consumer did not; release_all() then
-    # cleans up anything never taken, and logs it as the harness's doing.
+    # Every consumer object is gone by now, so the capsules have been collected
+    # and released what the consumer did not; release_all() then cleans up
+    # anything never taken, and logs it as the harness's doing. Only then is the
+    # log complete enough to judge -- and not strictly: the consumers move the
+    # structures into their own storage on import, legally and untracked.
     case.release_all()
     line = {
         "case": path,
@@ -209,6 +264,8 @@ def run_case(consumer: str, path: str, index: int, fault: tuple[str, int] | None
         "detail": detail,
         "observer": observer(case),
         "digest": digest,
+        "callseq": callseq,
+        "lifecycle": case.lifecycle_verdict(False),
     }
     if panicked:
         line["panicked"] = True
