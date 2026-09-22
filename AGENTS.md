@@ -54,6 +54,7 @@ python run_smoke.py            # add --log for the full lifecycle event log
 python repro_findings.py
 python check_leak_accounting.py   # leaked vs. still-held-by-the-consumer (#6)
 python check_digest_divergence.py # the logical digest catches a dropped offset
+python check_py_worker.py         # pyarrow vs dataprof under the coordinator (#17)
 
 # the frozen conformance model: recompute N and compare against the document
 python tools/coverage_matrix.py            # full breakdown

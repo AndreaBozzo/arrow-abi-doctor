@@ -108,6 +108,15 @@ the limitation, so a clean rejection is a compatibility-matrix entry. Only
 crashes, leaks, undefined behaviour and silent divergence are bugs; `README.md`
 has the table.
 
+A `rejected` line may carry `"panicked": true`. A worker whose consumer is
+reached through a language runtime can survive a fault the consumer did not: a
+Rust panic caught at the FFI boundary arrives in Python as pyo3's
+`PanicException`, which derives from `BaseException` so that nothing swallows it
+by accident. The worker is still alive to write the line, so the status is
+`rejected`; but it is not the clean refusal that word means everywhere else, and
+a reader must not route it to the compatibility matrix (dataprof#609 was one of
+these). The field is absent otherwise.
+
 A worker never reports its own death. A crash has no line, and its absence is
 the record.
 

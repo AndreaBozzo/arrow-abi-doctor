@@ -44,6 +44,8 @@ typedef struct {
    * reports a leak that is not there (issue #6).
    */
   int capsules_outstanding;
+  /* The payload digest, taken before the case itself is freed. */
+  char id[ABICASE_ID_HEX_SIZE];
 } AbiCaseObject;
 
 /*
@@ -305,6 +307,11 @@ static PyObject *AbiCase_digest(PyObject *selfobj, PyObject *Py_UNUSED(a)) {
   return digest_dict(schema, array);
 }
 
+/* The case id: a digest over the payload, not the file name it came from. */
+static PyObject *AbiCase_case_id(PyObject *selfobj, PyObject *Py_UNUSED(a)) {
+  return PyUnicode_FromString(((AbiCaseObject *)selfobj)->id);
+}
+
 static void AbiCase_dealloc(PyObject *selfobj) {
   AbiCaseObject *self = (AbiCaseObject *)selfobj;
   abi_reconstruction_free(self->rec);
@@ -323,6 +330,8 @@ static PyMethodDef AbiCase_methods[] = {
      "Release anything the consumer left live."},
     {"digest", AbiCase_digest, METH_NOARGS,
      "Physical and logical digest of what this case hands over."},
+    {"case_id", AbiCase_case_id, METH_NOARGS,
+     "The case id: 32 hex digits of the payload digest."},
     {NULL, NULL, 0, NULL}};
 
 static PyTypeObject AbiCaseType = {
@@ -343,12 +352,14 @@ static PyObject *wrap_case(AbiCase *c) {
   AbiReconstruction *rec = NULL;
   AbiError           err;
   AbiStatus          st;
+  char               id[ABICASE_ID_HEX_SIZE];
 
   if (c == NULL) {
     PyErr_SetString(PyExc_RuntimeError, "could not build the case");
     return NULL;
   }
   memset(&err, 0, sizeof(err));
+  abi_case_id(c, id);
   st = abi_reconstruct(c, &rec, &err);
   abi_case_free(c); /* the reconstruction copies everything it needs */
   if (st != ABI_OK) {
@@ -366,6 +377,7 @@ static PyObject *wrap_case(AbiCase *c) {
   obj->array_taken = 0;
   obj->schema_taken = 0;
   obj->capsules_outstanding = 0;
+  memcpy(obj->id, id, sizeof(obj->id));
   return (PyObject *)obj;
 }
 

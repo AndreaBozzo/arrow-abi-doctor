@@ -21,6 +21,10 @@ cargo run -p abi-coordinator -- \
     --cases corpus/a --limit 100 --out /tmp/run
 ```
 
+An interpreted worker gets its script and arguments through the repeatable
+`--worker-arg <name>=<arg>`; `adapters/README.md` has the Python worker's
+invocation.
+
 A run directory holds `cases.txt`, one `<worker>.results.jsonl`,
 `<worker>.stdout` and `<worker>.stderr` per consumer, and `run.json`.
 

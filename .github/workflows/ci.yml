@@ -183,6 +183,16 @@ jobs:
       - name: the logical digest catches a dropped offset
         run: python check_digest_divergence.py
         working-directory: adapters/dataprof
+      # The first differential pair under the coordinator (issue #17): pyarrow
+      # and dataprof over Corpus A in their own processes, then an injected
+      # panic that has to become a result line and an injected SIGSEGV that has
+      # to be attributed to its case. Checked from run.json and the result
+      # streams, not from what the coordinator printed.
+      - name: build the coordinator
+        run: cargo build --quiet -p abi-coordinator
+      - name: the python worker under the coordinator
+        run: python check_py_worker.py
+        working-directory: adapters/dataprof
 
   coordinator:
     name: linux / worker isolation

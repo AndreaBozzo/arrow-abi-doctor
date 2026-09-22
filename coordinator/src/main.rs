@@ -13,10 +13,15 @@ use abi_coordinator::{Run, RunConfig, WorkerSpec};
 
 const USAGE: &str = "\
 usage: abi-coordinator --worker <name>=<program> [--worker ...]
+                       [--worker-arg <name>=<arg> ...]
                        --cases <dir|list-file> [--limit <n>]
                        --out <run-dir> [--timeout-secs <n>]
 
   --worker   a consumer to run, in its own process. Repeatable.
+  --worker-arg  one argument for the named worker, placed before the
+             protocol's own. Repeatable, in order. How an interpreted worker
+             gets its script: --worker pyarrow=python
+             --worker-arg pyarrow=adapters/dataprof/abi_worker.py ...
   --cases    a directory of .abicase files, or a text file listing them
              one per line (`#` comments allowed).
   --limit    use only the first n cases, in sorted order.
@@ -65,6 +70,22 @@ fn real_main() -> Result<ExitCode, String> {
                     .split_once('=')
                     .ok_or_else(|| format!("--worker wants <name>=<program>, got {spec:?}"))?;
                 workers.push(WorkerSpec::new(name, program));
+            }
+            "--worker-arg" => {
+                let spec = value()?;
+                let (name, arg) = spec
+                    .split_once('=')
+                    .ok_or_else(|| format!("--worker-arg wants <name>=<arg>, got {spec:?}"))?;
+                // The worker must already be declared: an argument addressed to
+                // a name nobody declared would otherwise vanish, and a worker
+                // run without an argument it was meant to get reports on a run
+                // nobody asked for.
+                let worker = workers
+                    .iter_mut()
+                    .rev()
+                    .find(|w| w.name == name)
+                    .ok_or_else(|| format!("--worker-arg for undeclared worker {name:?}"))?;
+                worker.args.push(arg.into());
             }
             "--cases" => cases_arg = Some(PathBuf::from(value()?)),
             "--out" => out = Some(PathBuf::from(value()?)),

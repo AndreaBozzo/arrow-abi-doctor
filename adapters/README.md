@@ -2,14 +2,15 @@
 
 Each adapter sits behind one stable C interface, so adding an engine does not
 touch the core and new engines can arrive as outside contributions. Every
-adapter but `dataprof` speaks [docs/worker-protocol.md](../docs/worker-protocol.md)
-and runs in its own process, supervised by `coordinator/`.
+adapter speaks [docs/worker-protocol.md](../docs/worker-protocol.md) and runs in
+its own process, supervised by `coordinator/`; the dataprof smoke harness is the
+one thing here that still runs standalone.
 
 | Adapter | Milestone | Language |
 |---|---|---|
 | `null`      | M1 — the minimal conforming consumer, and the control voice | C |
 | `faulty`    | M1 — a test instrument, not a consumer | C |
-| `dataprof`  | M0.5 — smoke test of our own instrument | C + Python |
+| `dataprof`  | M0.5 — smoke test of our own instrument; M1 — the Python worker, pyarrow and dataprof as the first differential pair | C + Python |
 | `arrow_cpp` | M1 | C++ |
 | `duckdb`    | M1 | C++ |
 | `arrow_rs`  | M3 | Rust |
@@ -36,5 +37,23 @@ the logical digest catching a silent divergence that really happened.
 `dataprof/` holds a CPython extension that presents a reconstructed case as an
 Arrow PyCapsule producer, plus the smoke harness. Going in through the
 PyCapsule interface means the consumer's real production import path is
-exercised rather than a bespoke test hook — see `docs/m0.5-smoke.md`. It
-predates the worker protocol and still runs standalone.
+exercised rather than a bespoke test hook — see `docs/m0.5-smoke.md`. The smoke
+harness predates the worker protocol and still runs standalone.
+
+`dataprof/abi_worker.py` is the same extension behind the worker protocol, one
+consumer per process: `--consumer pyarrow` (Arrow C++'s `ImportArray`) or
+`--consumer dataprof` (arrow-rs `from_ffi`). That is an Arrow C++ against
+arrow-rs pair, each through its production import path, and the first
+differential pair the coordinator runs (issue #17). pyarrow re-exports what it
+imported, so its lines carry a `received` digest. Neither wheel is
+sanitizer-instrumented, which is why the native Arrow C++ adapter (#11) is still
+wanted.
+
+```sh
+cargo run -p abi-coordinator -- \
+    --worker pyarrow=python --worker-arg pyarrow=adapters/dataprof/abi_worker.py \
+    --worker-arg pyarrow=--consumer --worker-arg pyarrow=pyarrow \
+    --worker dataprof=python --worker-arg dataprof=adapters/dataprof/abi_worker.py \
+    --worker-arg dataprof=--consumer --worker-arg dataprof=dataprof \
+    --cases corpus/a --out /tmp/pair
+```
