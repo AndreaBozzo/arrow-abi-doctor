@@ -356,6 +356,26 @@ static void test_unreleased_is_cleaned_up_and_logged(void) {
   CHECKF(harness_releases == 2,
          "expected 2 HARNESS_RELEASED events (schema and array), got %d",
          harness_releases);
+  /*
+   * The harness enters the release at depth 0, exactly where a consumer
+   * would, so depth alone attributes this cleanup to a consumer that released
+   * nothing -- and every report then says released_by_consumer for it.
+   */
+  {
+    uint32_t i;
+    int      attributed = 0;
+    for (i = 0; i < o->event_count; i++) {
+      const AbiEvent *e = &o->events[i];
+      if ((e->kind == ABI_EV_SCHEMA_RELEASE_ENTER ||
+           e->kind == ABI_EV_ARRAY_RELEASE_ENTER) &&
+          e->by_consumer)
+        attributed++;
+    }
+    CHECKF(attributed == 0,
+           "%d harness release(s) attributed to a consumer that released "
+           "nothing",
+           attributed);
+  }
   CHECKF(!abi_reconstruction_leaked(r),
          "harness cleanup must balance: %lld bytes / %lld blocks",
          (long long)(o->alloc.bytes_allocated - o->alloc.bytes_freed),

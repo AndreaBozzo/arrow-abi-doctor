@@ -54,6 +54,13 @@ struct AbiReconstruction {
   struct ArrowArray  array;
   int                has_array;
 
+  /*
+   * Set while release_all() is releasing what a consumer left live. The
+   * harness enters those releases at depth 0, exactly where a consumer would,
+   * so depth alone cannot tell the two apart: this is what does.
+   */
+  int harness_releasing;
+
   AbiObserver obs;
 };
 
@@ -158,7 +165,8 @@ static void schema_release(struct ArrowSchema *s) {
   uint32_t           i, slots = p->child_slots;
   uint8_t            is_root = p->is_root;
   char               path[ABI_EVENT_PATH_MAX];
-  uint8_t            by_consumer = (r->obs.release_depth == 0) ? 1u : 0u;
+  uint8_t            by_consumer =
+      (r->obs.release_depth == 0 && !r->harness_releasing) ? 1u : 0u;
 
   memcpy(path, p->path, sizeof(path));
 
@@ -215,7 +223,8 @@ static void array_release(struct ArrowArray *a) {
   uint32_t           i, slots = p->child_slots;
   uint8_t            is_root = p->is_root;
   char               path[ABI_EVENT_PATH_MAX];
-  uint8_t            by_consumer = (r->obs.release_depth == 0) ? 1u : 0u;
+  uint8_t            by_consumer =
+      (r->obs.release_depth == 0 && !r->harness_releasing) ? 1u : 0u;
 
   memcpy(path, p->path, sizeof(path));
 
@@ -582,6 +591,7 @@ void abi_reconstruction_release_all(AbiReconstruction *r) {
    * live in the reconstruction, so a harness that wants to report on the
    * cleanup has to be able to release first and read afterwards.
    */
+  r->harness_releasing = 1;
   if (r->schema.release) {
     obs_event(r, ABI_EV_HARNESS_RELEASED, "/", 0);
     r->schema.release(&r->schema);
@@ -590,6 +600,7 @@ void abi_reconstruction_release_all(AbiReconstruction *r) {
     obs_event(r, ABI_EV_HARNESS_RELEASED, "/", 0);
     r->array.release(&r->array);
   }
+  r->harness_releasing = 0;
   free_backing_allocations(r);
 }
 
