@@ -9,8 +9,11 @@ into real `ArrowSchema` / `ArrowArray` structures with the lifecycle observed.
 The bounded conformance model is frozen, and its `direct` lifecycle is generated
 as Corpus A; a dual digest can describe either side of a handoff; and each
 consumer runs in its own supervised process, so a crash is a recorded result
-rather than the end of a run. The differential report, the reference validator,
-the stream interface and Corpus B1 are what M1 still owes.
+rather than the end of a run. pyarrow and dataprof — Arrow C++ and arrow-rs —
+run under it as the first differential pair, and every run reduces to the
+per-cell states the coverage model defines. The reference validator, the stream
+interface, the native Arrow C++ and DuckDB adapters and Corpus B1 are what M1
+still owes.
 
 ---
 

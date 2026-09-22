@@ -39,3 +39,19 @@ A run directory holds `cases.txt`, one `<worker>.results.jsonl`,
 - **`suspect` is an attribution, not a verdict.** It is the first case the
   worker did not report, which is the one it was working on when it died — but a
   worker can die on case 37 because of state left by case 12.
+
+`run.json` records what each worker did. What it *means* against the model —
+each of the N cells, per consumer, as `agree` / `disagree` / `not-run` /
+`inexpressible`, the defects, the compatibility and undocumented-limit routing,
+and whether the coverage claim can be made — is `tools/diff_report.py`, which
+reads a run directory and writes `report.json` beside it:
+
+```sh
+python tools/diff_report.py /tmp/run/run.json
+```
+
+A rejection is routed to the compatibility matrix only when
+`docs/documented-limits.toml` records, with a verbatim quote, that the consumer
+documents the limitation. Everything else goes to a review list, grouped by
+rejection text, because a clean refusal is also what some defects look like
+(apache/arrow-rs#10910).

@@ -37,6 +37,11 @@ jobs:
       # the published figure stays a computed one rather than a maintained one.
       - name: coverage model
         run: python tools/coverage_matrix.py --check
+      # The report's branches that no real run can reach yet: with three of the
+      # five lifecycles inexpressible, no real run is ever N/N, so the claim and
+      # a mid-run kill are checked over synthetic runs of the whole model.
+      - name: differential report
+        run: python tools/test_diff_report.py
       # arrow_abi.h is excluded by .clang-format-ignore: it is vendored verbatim
       # and a diff against upstream has to stay meaningful.
       - name: clang-format
@@ -169,7 +174,7 @@ jobs:
       - name: build the corpus generator and the faulty worker
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          cmake --build build --target abicase-gen abi-worker-faulty
+          cmake --build build --target abicase-gen abi-worker-faulty abi-worker-null
       - name: generate corpus A
         run: python tools/gen_corpus.py
       - name: read corpus A back with pyarrow
@@ -193,6 +198,25 @@ jobs:
       - name: the python worker under the coordinator
         run: python check_py_worker.py
         working-directory: adapters/dataprof
+      # The differential report over a real run (issue #16): the null control,
+      # both voices of the pair, and the faulty worker in drop-offset mode as a
+      # planted silent divergence. --expect-divergence fails unless the planted
+      # divergence surfaces as `disagree`, and only as that; the real
+      # consumers' verdicts are printed, never pinned.
+      - name: differential report over the pair, with a planted divergence
+        run: |
+          ABI_FAULTY_MODE=drop-offset cargo run --quiet -p abi-coordinator -- \
+            --worker null=./build/adapters/abi-worker-null \
+            --worker pyarrow=python \
+            --worker-arg pyarrow=adapters/dataprof/abi_worker.py \
+            --worker-arg pyarrow=--consumer --worker-arg pyarrow=pyarrow \
+            --worker dataprof=python \
+            --worker-arg dataprof=adapters/dataprof/abi_worker.py \
+            --worker-arg dataprof=--consumer --worker-arg dataprof=dataprof \
+            --worker planted=./build/adapters/abi-worker-faulty \
+            --cases corpus/a --out "$RUNNER_TEMP/pair"
+          python tools/diff_report.py "$RUNNER_TEMP/pair/run.json" \
+            --expect-divergence planted
 
   coordinator:
     name: linux / worker isolation

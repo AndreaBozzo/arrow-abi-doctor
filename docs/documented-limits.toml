@@ -1,0 +1,33 @@
+# Documented limitations, per consumer.
+#
+# docs/coverage-matrix.md §5 lets a consumer cleanly reject an `EITHER` cell --
+# a non-zero offset, a non-natural alignment, a type it does not support --
+# provided it documents the limitation. Whether it does is "a judgement made per
+# consumer, once, not per case", and this file is where that judgement is
+# written down. tools/diff_report.py reads it.
+#
+# A rejection this file covers is a compatibility-matrix entry. A rejection it
+# does not cover goes to the undocumented-limits map *and* onto a review list,
+# never silently to the compatibility matrix: apache/arrow-rs#10910 was a
+# consumer defect whose symptom was a clean rejection on an `EITHER` cell, and a
+# mechanical reading of §5 would have filed it as compatibility.
+#
+# An entry needs evidence, not an impression: the URL where the consumer
+# documents the limitation and the sentence quoted verbatim. An entry without a
+# quote is an opinion about the consumer, and it does not belong here.
+#
+#   [[limit]]
+#   consumer  = "pyarrow"              # the worker name in the run
+#   dimension = "offset"               # offset | alignment | type
+#   values    = ["1", "7", "8", "9"]   # the classes the documentation declines
+#   detail    = "offset"               # optional regex the rejection must match
+#   source    = "https://..."
+#   quote     = "..."
+#
+# `offset` may not list "0" and `alignment` may not list "natural": those are
+# `ACCEPT` cells, and no documentation makes rejecting them conforming. `type`
+# may list any type, since §5 lets a consumer decline a type wholesale.
+#
+# Empty for now. Neither pyarrow nor dataprof has an entry, because none of the
+# rejections seen so far is a documented limitation -- dataprof's 24 are
+# arrow-rs#10910 itself.

@@ -75,6 +75,8 @@ cargo run -p abi-coordinator -- \
     --worker faulty=./build/adapters/abi-worker-faulty \
     --cases corpus/a --limit 100 --out /tmp/run
 python tools/check_isolation_run.py /tmp/run/run.json --cases 100 --crash-at 40
+python tools/diff_report.py /tmp/run/run.json  # §4 states per cell, the claim
+python tools/test_diff_report.py               # its rules, over synthetic runs
 
 # lint and format
 ruff check . && ruff format --check . && mypy .
