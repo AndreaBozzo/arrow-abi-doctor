@@ -66,8 +66,8 @@ void abi_worker_header(AbiWorker *w, const char *consumer, const char *version);
  * one that returned the data intact.
  */
 /*
- * Room for "<status>: " plus the whole of AbiError.message, so a reason is never
- * cut short -- a truncated reason is a report nobody can act on.
+ * Room for "<status>: " plus the whole of AbiError.message, so a reason is
+ * never cut short -- a truncated reason is a report nobody can act on.
  */
 #define ABI_WORKER_REASON_SIZE 256
 
