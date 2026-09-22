@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "abi/digest.h"
 #include "abi/reconstruct.h"
 #include "fixture.h"
 
@@ -256,6 +257,54 @@ static PyObject *AbiCase_release_all(PyObject *selfobj,
   Py_RETURN_NONE;
 }
 
+/* --- digests ---------------------------------------------------------------
+ */
+
+/* {"physical": hex, "logical": hex}, or NULL with ValueError set. */
+static PyObject *digest_dict(const struct ArrowSchema *schema,
+                             const struct ArrowArray  *array) {
+  AbiDigest d;
+  AbiError  err;
+  AbiStatus st;
+  char      physical[ABI_DIGEST_HEX_SIZE], logical[ABI_DIGEST_HEX_SIZE];
+
+  memset(&err, 0, sizeof(err));
+  st = abi_digest(schema, array, &d, &err);
+  if (st != ABI_OK) {
+    PyErr_Format(PyExc_ValueError, "digest: %s (%s)", abi_status_str(st),
+                 err.message);
+    return NULL;
+  }
+  abi_digest_hex(d.physical, physical);
+  abi_digest_hex(d.logical, logical);
+  return Py_BuildValue("{s:s,s:s}", "physical", physical, "logical", logical);
+}
+
+/*
+ * The digest of what this case will hand over -- the `sent` half of a worker
+ * result line. Only while the structures are still here: once a consumer has
+ * taken them, what is left is a released shell, and digesting that would
+ * describe nothing that was sent.
+ */
+static PyObject *AbiCase_digest(PyObject *selfobj, PyObject *Py_UNUSED(a)) {
+  AbiCaseObject      *self = (AbiCaseObject *)selfobj;
+  struct ArrowSchema *schema = abi_reconstruction_schema(self->rec);
+  struct ArrowArray  *array = abi_reconstruction_array(self->rec);
+
+  if (array == NULL) {
+    PyErr_SetString(PyExc_ValueError,
+                    "this case has no array (schema-only case)");
+    return NULL;
+  }
+  if (schema->release == NULL || array->release == NULL) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "digest before export: the structures have been moved out "
+                    "or released");
+    return NULL;
+  }
+  return digest_dict(schema, array);
+}
+
 static void AbiCase_dealloc(PyObject *selfobj) {
   AbiCaseObject *self = (AbiCaseObject *)selfobj;
   abi_reconstruction_free(self->rec);
@@ -272,6 +321,8 @@ static PyMethodDef AbiCase_methods[] = {
      "Observed lifecycle: event log, allocation delta, violations."},
     {"release_all", AbiCase_release_all, METH_NOARGS,
      "Release anything the consumer left live."},
+    {"digest", AbiCase_digest, METH_NOARGS,
+     "Physical and logical digest of what this case hands over."},
     {NULL, NULL, 0, NULL}};
 
 static PyTypeObject AbiCaseType = {
@@ -349,7 +400,34 @@ static PyObject *mod_bad_dict_index(PyObject *Py_UNUSED(m),
   return wrap_case(abi_fixture_bad_dict_index());
 }
 
+/*
+ * digest(schema_capsule, array_capsule) -- the `received` half: a digest of
+ * structures a consumer handed back through the PyCapsule interface, e.g.
+ * `pyarrow.RecordBatch.__arrow_c_array__()`. The capsules are read, not
+ * consumed; each still releases its structure when it is collected.
+ */
+static PyObject *mod_digest(PyObject *Py_UNUSED(m), PyObject *args) {
+  PyObject           *schema_cap, *array_cap;
+  struct ArrowSchema *schema;
+  struct ArrowArray  *array;
+
+  if (!PyArg_ParseTuple(args, "OO", &schema_cap, &array_cap)) return NULL;
+  schema =
+      (struct ArrowSchema *)PyCapsule_GetPointer(schema_cap, "arrow_schema");
+  if (schema == NULL) return NULL;
+  array = (struct ArrowArray *)PyCapsule_GetPointer(array_cap, "arrow_array");
+  if (array == NULL) return NULL;
+  if (schema->release == NULL || array->release == NULL) {
+    PyErr_SetString(PyExc_ValueError,
+                    "digest: a capsule holds a released structure");
+    return NULL;
+  }
+  return digest_dict(schema, array);
+}
+
 static PyMethodDef module_methods[] = {
+    {"digest", mod_digest, METH_VARARGS,
+     "Digest (schema_capsule, array_capsule) without consuming them."},
     {"load", mod_load, METH_VARARGS,
      "Load a .abicase file and reconstruct it."},
     {"smoke", mod_smoke, METH_NOARGS,

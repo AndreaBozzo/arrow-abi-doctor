@@ -24,6 +24,7 @@ LIBABI_SOURCES = [
     "encode.c",
     "decode.c",
     "reconstruct.c",
+    "digest.c",
 ]
 
 sources = (

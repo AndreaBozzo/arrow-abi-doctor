@@ -9,7 +9,9 @@
  * it is the one worker available on every host the coordinator runs on.
  *
  * It is not a consumer of *data*. It reads no buffer and compares no value; a
- * silent divergence is invisible to it by construction.
+ * silent divergence is invisible to it by construction. It does report the
+ * digest of what it was handed (`sent`), which is the harness's half of every
+ * comparison a data-reading consumer makes.
  */
 #include <stdio.h>
 #include <string.h>
@@ -28,14 +30,16 @@ static void run_case(AbiWorker *w, const char *path) {
   char                id[ABICASE_ID_HEX_SIZE];
   char                detail[256];
   long long           length = -1;
+  AbiWorkerDigest     dg;
 
   memset(&err, 0, sizeof(err));
+  memset(&dg, 0, sizeof(dg));
   memset(id, 0, sizeof(id));
 
   st = abi_case_read_file(path, &c, &err);
   if (st != ABI_OK) {
     snprintf(detail, sizeof(detail), "%s: %s", abi_status_str(st), err.message);
-    abi_worker_result(w, path, NULL, "error", detail, NULL);
+    abi_worker_result(w, path, NULL, "error", detail, NULL, NULL);
     return;
   }
   abi_case_id(c, id);
@@ -43,7 +47,7 @@ static void run_case(AbiWorker *w, const char *path) {
   st = abi_reconstruct(c, &r, &err);
   if (st != ABI_OK) {
     snprintf(detail, sizeof(detail), "%s: %s", abi_status_str(st), err.message);
-    abi_worker_result(w, path, id, "error", detail, NULL);
+    abi_worker_result(w, path, id, "error", detail, NULL, NULL);
     abi_case_free(c);
     return;
   }
@@ -51,6 +55,14 @@ static void run_case(AbiWorker *w, const char *path) {
   schema = abi_reconstruction_schema(r);
   array = abi_reconstruction_array(r);
   if (array) length = (long long)array->length;
+
+  /*
+   * What is handed over, digested before the handoff. There is no `received`:
+   * this consumer reads nothing and hands nothing back, and saying so by
+   * omission is the point -- a copy of `sent` would claim a round trip that
+   * never happened.
+   */
+  abi_worker_digest_sent(&dg, schema, array);
 
   /*
    * The consumer's whole behaviour. Released parent-first and by us, from
@@ -70,7 +82,7 @@ static void run_case(AbiWorker *w, const char *path) {
    */
   abi_reconstruction_release_all(r);
   abi_worker_result(w, path, id, "accepted", detail,
-                    abi_reconstruction_observer(r));
+                    abi_reconstruction_observer(r), &dg);
 
   abi_reconstruction_free(r);
   abi_case_free(c);

@@ -166,14 +166,22 @@ jobs:
       # the validity bitmap written most-significant-bit first; check_corpus.py
       # imports every case and compares every slot against the model. It needs a
       # consumer, so it lives in this job rather than in linux-gcc.
-      - name: build the corpus generator
+      - name: build the corpus generator and the faulty worker
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          cmake --build build --target abicase-gen
+          cmake --build build --target abicase-gen abi-worker-faulty
       - name: generate corpus A
         run: python tools/gen_corpus.py
       - name: read corpus A back with pyarrow
         run: python check_corpus.py
+        working-directory: adapters/dataprof
+      # Silent divergence is the defect class a crash detector cannot see, and
+      # the logical digest is the claim that it is observable anyway. The faulty
+      # worker drops ArrowArray.offset on the way back; pyarrow predicts, cell
+      # by cell, whether that changes the data; the digest must agree on every
+      # one, and a worker that stops dropping the offset fails it.
+      - name: the logical digest catches a dropped offset
+        run: python check_digest_divergence.py
         working-directory: adapters/dataprof
 
   coordinator:
@@ -213,7 +221,7 @@ jobs:
             --worker faulty=./build/adapters/abi-worker-faulty \
             --cases corpus/a --limit 100 --out "$RUNNER_TEMP/run"
           python3 tools/check_isolation_run.py "$RUNNER_TEMP/run/run.json" \
-            --cases 100 --crash-at 40
+            --cases 100 --crash-at 40 --expect-sent-only
       # The header's `sanitizers` is an array of names, and only a build with
       # sanitizers on can tell that from one comma-joined string: everywhere
       # else the list is empty and both shapes look alike. So the check is

@@ -111,6 +111,40 @@ has the table.
 A worker never reports its own death. A crash has no line, and its absence is
 the record.
 
+### The `digest` object
+
+Optional on a case line. It carries the dual digest of `docs/digest.md` for each
+side of the handoff:
+
+```json
+"digest": {"ver": 1,
+           "sent":     {"physical": "8e18…", "logical": "6740…"},
+           "received": {"physical": "b35d…", "logical": "8395…"}}
+```
+
+- `ver` is `digest_ver`. Digests under different versions are not comparable,
+  so a line never carries one without it.
+- `sent` is what the harness handed over, digested before the handoff.
+- `received` is what the consumer handed back — re-exported through the C Data
+  Interface after its own import, and digested before release.
+
+Each half is present, replaced by `sent_error` / `received_error` with the
+reason it could not be computed (a type outside the v0 set, a schema-only
+case), or **absent**. Absent means the consumer hands nothing back — the null
+worker; dataprof, which returns a profile rather than an array. A worker must
+not fill a missing `received` with a copy of `sent`: absent has to stay
+distinguishable from equal, or a consumer that returned nothing reads as one
+that returned the data intact.
+
+A `logical` mismatch is a silent divergence, a bug under every outcome
+(`docs/coverage-matrix.md` §5). A `physical` mismatch with `logical` equal is a
+representation difference — a materialized slice, a rename — and a
+compatibility entry rather than a defect.
+
+This field was added after `worker_protocol` 1 was published, and it is
+additive: a reader that ignores it loses nothing it had before, and a worker
+that omits it is still a conforming v1 worker. `worker_protocol` stays 1.
+
 ## Exit
 
 | Exit code | Meaning |

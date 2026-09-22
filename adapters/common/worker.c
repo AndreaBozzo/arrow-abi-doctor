@@ -295,9 +295,76 @@ static void put_observer(FILE *out, const AbiObserver *o) {
   fputc('}', out);
 }
 
+static void digest_half(int *have, AbiDigest *dst, char *reason,
+                        size_t reason_size, const struct ArrowSchema *s,
+                        const struct ArrowArray *a) {
+  AbiError  err;
+  AbiStatus st;
+
+  memset(&err, 0, sizeof(err));
+  *have = 0;
+  reason[0] = 0;
+  if (!s || !a) {
+    /* A schema-only case delivers no array, so there is nothing to digest. */
+    snprintf(reason, reason_size, "no array to digest");
+    return;
+  }
+  st = abi_digest(s, a, dst, &err);
+  if (st != ABI_OK) {
+    snprintf(reason, reason_size, "%s: %s", abi_status_str(st), err.message);
+    return;
+  }
+  *have = 1;
+}
+
+void abi_worker_digest_sent(AbiWorkerDigest *d, const struct ArrowSchema *s,
+                            const struct ArrowArray *a) {
+  digest_half(&d->have_sent, &d->sent, d->sent_error, sizeof(d->sent_error), s,
+              a);
+}
+
+void abi_worker_digest_received(AbiWorkerDigest *d, const struct ArrowSchema *s,
+                                const struct ArrowArray *a) {
+  digest_half(&d->have_received, &d->received, d->received_error,
+              sizeof(d->received_error), s, a);
+}
+
+/* One half: an object when computed, `<key>_error` when it failed, else
+   nothing at all. */
+static void put_digest_half(FILE *out, const char *key, int have,
+                            const AbiDigest *dg, const char *reason) {
+  char hex[ABI_DIGEST_HEX_SIZE];
+  char error_key[32];
+
+  if (have) {
+    put_key(out, key, 0);
+    fputc('{', out);
+    abi_digest_hex(dg->physical, hex);
+    put_field(out, "physical", hex, 1);
+    abi_digest_hex(dg->logical, hex);
+    put_field(out, "logical", hex, 0);
+    fputc('}', out);
+  } else if (reason[0]) {
+    snprintf(error_key, sizeof(error_key), "%s_error", key);
+    put_field(out, error_key, reason, 0);
+  }
+}
+
+static void put_digest(FILE *out, const AbiWorkerDigest *d) {
+  put_key(out, "digest", 0);
+  fputc('{', out);
+  /* Digests under different versions are not comparable (docs/digest.md 5),
+     so every line says which one it carries. */
+  put_uint(out, "ver", (unsigned long long)ABI_DIGEST_VER, 1);
+  put_digest_half(out, "sent", d->have_sent, &d->sent, d->sent_error);
+  put_digest_half(out, "received", d->have_received, &d->received,
+                  d->received_error);
+  fputc('}', out);
+}
+
 void abi_worker_result(AbiWorker *w, const char *case_path, const char *id,
                        const char *status, const char *detail,
-                       const AbiObserver *obs) {
+                       const AbiObserver *obs, const AbiWorkerDigest *dg) {
   FILE *out = w->out;
 
   fputc('{', out);
@@ -306,6 +373,7 @@ void abi_worker_result(AbiWorker *w, const char *case_path, const char *id,
   put_field(out, "status", status, 0);
   put_field(out, "detail", detail, 0);
   if (obs) put_observer(out, obs);
+  if (dg) put_digest(out, dg);
   fputs("}\n", out);
   fflush(out);
 }

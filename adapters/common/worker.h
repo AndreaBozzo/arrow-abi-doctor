@@ -14,6 +14,7 @@
 #include <stddef.h>
 #include <stdio.h>
 
+#include "abi/digest.h"
 #include "abi/reconstruct.h"
 
 #define ABI_WORKER_PROTOCOL 1
@@ -57,13 +58,36 @@ void abi_worker_close(AbiWorker *w);
 void abi_worker_header(AbiWorker *w, const char *consumer, const char *version);
 
 /*
+ * What was handed to the consumer and what it handed back, digested
+ * (docs/digest.md). Each half is in one of three states -- computed, failed
+ * with a reason, or absent -- and they are written as such. A consumer that
+ * hands nothing back has no `received`, never a copy of `sent`: absent has to
+ * stay distinguishable from equal, or a consumer that returns nothing reads as
+ * one that returned the data intact.
+ */
+typedef struct {
+  int       have_sent;
+  AbiDigest sent;
+  char      sent_error[160];
+  int       have_received;
+  AbiDigest received;
+  char      received_error[160];
+} AbiWorkerDigest;
+
+/* Fills one half from `schema` + `array`; a failure is recorded, not fatal. */
+void abi_worker_digest_sent(AbiWorkerDigest *d, const struct ArrowSchema *s,
+                            const struct ArrowArray *a);
+void abi_worker_digest_received(AbiWorkerDigest *d, const struct ArrowSchema *s,
+                                const struct ArrowArray *a);
+
+/*
  * One case, one line, flushed before returning. `obs` may be NULL when the
- * case never got as far as a reconstruction. `status` is "accepted",
- * "rejected" or "error" -- and "rejected" is a compatibility entry, not a
- * defect, so nothing here treats it as a failure.
+ * case never got as far as a reconstruction, and `dg` when nothing was
+ * digested. `status` is "accepted", "rejected" or "error" -- and "rejected" is
+ * a compatibility entry, not a defect, so nothing here treats it as a failure.
  */
 void abi_worker_result(AbiWorker *w, const char *case_path, const char *id,
                        const char *status, const char *detail,
-                       const AbiObserver *obs);
+                       const AbiObserver *obs, const AbiWorkerDigest *dg);
 
 #endif /* ABI_WORKER_H */

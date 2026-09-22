@@ -28,7 +28,10 @@ no value, so a silent divergence is invisible to it by construction.
 `faulty/` crashes, hangs, exits non-zero or truncates its stream on demand
 (`ABI_FAULTY_MODE`, `ABI_FAULTY_AT`). It is never a voice in a differential run;
 it exists so the coordinator's abnormal-termination paths are exercised by a
-process that really does those things rather than by a test double.
+process that really does those things rather than by a test double. Its
+`drop-offset` mode fails the other way, by answering wrongly: it hands back the
+case with every offset zeroed, which is how `check_digest_divergence.py` shows
+the logical digest catching a silent divergence that really happened.
 
 `dataprof/` holds a CPython extension that presents a reconstructed case as an
 Arrow PyCapsule producer, plus the smoke harness. Going in through the

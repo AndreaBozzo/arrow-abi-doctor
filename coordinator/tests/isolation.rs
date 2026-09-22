@@ -394,3 +394,43 @@ fn the_null_consumer_releases_what_it_imports() {
     }
     assert_eq!(seen, 2);
 }
+
+/// A digest that cannot be computed is reported as such, with its reason, and
+/// never as an absent field. The shared fixture carries a dictionary, which the
+/// v0 digest refuses rather than guessing at (`docs/digest.md`), so the null
+/// worker's `sent` half must come back as `sent_error` naming the refusal. And
+/// the null consumer hands nothing back, so there is no `received` in either
+/// form: a copy of `sent` would claim a round trip that never happened.
+#[test]
+fn an_undigestable_case_reports_why_and_the_null_consumer_claims_nothing_back() {
+    let dir = scratch("digest");
+    let cases = make_cases(&dir, 1);
+
+    let report = Run::execute(&config(&dir, cases, vec![null_worker()])).expect("run completes");
+    let results = fs::read_to_string(&report.workers[0].results_path).expect("results");
+    let line = results.lines().nth(1).expect("one result line");
+    let value: serde_json::Value = serde_json::from_str(line).expect("result line");
+
+    assert_eq!(
+        value["status"], "accepted",
+        "a digest failure is not a case failure"
+    );
+    let digest = value.get("digest").expect("digest object");
+    assert_eq!(digest["ver"], 1);
+    assert!(
+        digest.get("sent").is_none(),
+        "no digest was computed: {digest}"
+    );
+    let reason = digest["sent_error"]
+        .as_str()
+        .expect("sent_error is a string");
+    assert!(!reason.is_empty(), "the refusal carries its reason");
+    assert!(
+        digest.get("received").is_none(),
+        "nothing came back: {digest}"
+    );
+    assert!(
+        digest.get("received_error").is_none(),
+        "nothing came back: {digest}"
+    );
+}
