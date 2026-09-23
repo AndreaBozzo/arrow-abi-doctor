@@ -61,12 +61,20 @@ none.
 
 ### An unaligned buffer is kept, and read through a misaligned pointer
 
-**Status: reproduced on 1.5.5 built from the pinned source. Not filed
-upstream**, and no DuckDB issue found for it. On DuckDB's development branch
-(`795e1c1`, 2026-09-23), a read of the source finds the same zero-copy
-`DirectConversion` with no alignment check. That supports the finding there
-but does not confirm it: it has not been reproduced on that branch. Whether to
-report it is the maintainer's call.
+**Status: reproduced on 1.5.5 built from the pinned source, and on DuckDB's
+development branch (`v2.0-cyanoptera` at `795e1c1`, a Debug build, which has
+UBSan on by default). Not filed upstream yet**; no DuckDB issue found for it.
+
+Two sites, the same on both builds. One unaligned case per type, alignment and
+offset in Corpus A, each run in its own process:
+
+| Buffer | Misaligned by | UBSan |
+|---|---|---|
+| `utf8` offsets | +1 | `SetVectorString<uint32_t>`, **during the import** |
+| `int32` values | +1 | `ArrowScalarBaseData<int>::Append`, on the zero-copied vector |
+| `int64`, `double` values | +1, +4 | `ArrowScalarBaseData<…>::Append`, likewise |
+| `int32` values, `utf8` offsets | +4 | none: aligned for 4 bytes |
+| `bool` | any | none |
 
 The C Data Interface lets a consumer decline unaligned memory, provided it
 documents that ("Consumers MAY decide not to support unaligned memory").
