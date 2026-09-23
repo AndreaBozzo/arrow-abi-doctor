@@ -244,8 +244,9 @@ migration window is 2026 and does not stay open long.
   `coverage_model_ver` 2. The reference validator then found that nanoarrow
   validates an unaligned `utf8` offsets buffer through misaligned `int32_t`
   loads — undefined behaviour on input the specification permits. Confirmed on
-  0.9.0 and on nanoarrow `main`, with a nanoarrow-only reproducer; not yet filed
-  upstream ([record](refval/README.md#findings)).
+  0.9.0 and on nanoarrow `main`, with a nanoarrow-only reproducer, and filed as
+  [apache/arrow-nanoarrow#945](https://github.com/apache/arrow-nanoarrow/issues/945)
+  ([record](refval/README.md#findings)).
 - **M2** — 90 days. Succeeds on either: **(A)** a Corpus A disagreement between
   two consumers, classified as crash/leak or silent divergence, reproduced in a
   `.abicase` under 10 KB, filed upstream and accepted as valid; or **(B)** no

@@ -22,7 +22,8 @@
  * buffer moved one byte in, which is the `+1` alignment class of the bounded
  * conformance model (docs/coverage-matrix.md 1.6), where the harness found it.
  *
- * Status and evidence are in refval/README.md. When a nanoarrow that no longer
+ * Filed as apache/arrow-nanoarrow#945. Status and evidence are in
+ * refval/README.md. When a nanoarrow that no longer
  * does this is vendored, the ctest that runs this program starts failing, and
  * the alignment carve-out in refval/CMakeLists.txt comes out with it.
  */

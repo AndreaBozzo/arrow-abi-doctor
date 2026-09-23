@@ -83,7 +83,9 @@ validation agreed.
 
 ### nanoarrow validates unaligned offsets through misaligned `int32_t` loads
 
-**Status: confirmed, not filed upstream.**
+**Status: confirmed, filed upstream as
+[apache/arrow-nanoarrow#945](https://github.com/apache/arrow-nanoarrow/issues/945)
+(2026-09-23), with an offer to submit the fix.**
 
 `ArrowArrayViewValidateDefault()` reads the first and last offsets of a `utf8` /
 `binary` array as `data.as_int32[i]`. When the offsets buffer is not 4-byte
@@ -111,6 +113,11 @@ not a documented limitation.
   loads; without a sanitizer it prints "valid".
 - **Confirmed on the code that will ship**: the vendored 0.9.0 release, and a
   bundle of nanoarrow `main` at `ec8a58cae1` (2026-09-18, `0.10.0-SNAPSHOT`).
+- **Wider than the corpus shows**: probed one process per case against `main`,
+  it is also the `ArrowAssertIncreasingInt32/Int64()` loops at `full`,
+  `binary`, and `large_string` at both `+1` and `+4` (int64 offsets); the list,
+  map and large_list branches read offsets the same way, by inspection. A
+  `memcpy` load at those sites removes every report with verdicts unchanged.
 - **Not the same as** apache/arrow-nanoarrow#323, a bus error reported through
   R/ADBC and closed in 2023.
 - **Guarded**: CI runs the reproducer under UBSan and requires the report
