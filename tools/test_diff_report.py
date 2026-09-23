@@ -129,6 +129,30 @@ def test_a_planted_logical_mismatch_is_a_disagreement() -> None:
     assert len(report["defects"]) == 1
 
 
+def test_a_received_that_could_not_be_digested_is_not_run() -> None:
+    # The consumer handed something back and the digest could not read it -- a
+    # struct child shorter than its parent, say. Nothing was compared, so the
+    # cell has no verdict: not an agreement, and not claimable.
+    lines = [line(k) for k in FULL]
+    del lines[5]["digest"]["received"]
+    lines[5]["digest"]["received_error"] = "window [0,+3) escapes an array of length 2"
+    report = run(FULL, lines)
+    record = cell_record(report, lines[5]["id"])
+    assert record["state"] == "not-run" and "could not be digested" in record["reason"], record
+    assert not report["claim"]["claimable"]
+
+
+def test_a_consumer_that_hands_nothing_back_still_agrees() -> None:
+    # No `received` and no `received_error`: absent, as the null worker and
+    # the validator report. That is not a failed comparison.
+    lines = [line(k) for k in FULL]
+    for entry in lines:
+        del entry["digest"]["received"]
+    report = run(FULL, lines)
+    assert report["consumers"]["w"]["states"]["agree"] == len(FULL), report["consumers"]
+    assert report["claim"]["claimable"]
+
+
 def test_a_physical_only_change_is_representation_not_defect() -> None:
     lines = [line(k) for k in FULL]
     lines[3]["digest"]["received"]["physical"] = "d" * 32

@@ -98,7 +98,7 @@ def documented(limits: list[dict[str, Any]], consumer: str, cell: Case, detail: 
 
 # One return per row of §5's table, in the order the rows must be tried: a panic
 # or a leak outranks how the case was answered. Split up, the order is hidden.
-def classify(  # noqa: PLR0911
+def classify(  # noqa: PLR0911, PLR0912
     line: dict[str, Any], cell: Case, consumer: str, limits: list[dict[str, Any]]
 ) -> tuple[str, str | None, str]:
     """(state, route, reason) for one executed case.
@@ -136,6 +136,11 @@ def classify(  # noqa: PLR0911
 
     digest = line.get("digest") or {}
     sent, received = digest.get("sent"), digest.get("received")
+    if sent and not received and digest.get("received_error"):
+        # Something came back and could not be digested, so nothing was
+        # compared: a cell with no verdict. An absent `received` is different
+        # -- a consumer that hands nothing back -- and still agrees.
+        return "not-run", None, f"what came back could not be digested: {digest['received_error']}"
     if sent and received:
         if sent["logical"] != received["logical"]:
             return "disagree", "defect", "silent divergence: the logical digest changed"
