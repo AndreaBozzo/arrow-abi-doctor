@@ -222,6 +222,27 @@ def build(
         name: s["states"]["not-run"] + s["states"]["inexpressible"] for name, s in summary.items()
     }
     claimable = bool(workers) and not any(holes.values()) and not problems
+
+    # §4 puts every cell in a state per consumer, so a consumer that ran the
+    # whole model can make the claim even when another in the same run could
+    # not. The disagreements go with it: M2-B is "no disagreement across N/N",
+    # and exhaustive coverage alone is not that.
+    # A test instrument -- the faulty worker, or any worker running with fault
+    # injection -- is not a consumer, and nothing it does is a measurement.
+    def instrument(s: dict[str, Any]) -> bool:
+        return s["consumer"] == "faulty" or bool(s["fault_injection"])
+
+    per_consumer = {
+        name: {
+            "claimable": not holes[name] and not problems and not instrument(s),
+            "text": (CLAIM.format(ver=MODEL_VERSION) + f": {len(cells)}/{len(cells)}")
+            if not holes[name] and not problems and not instrument(s)
+            else None,
+            "disagree": s["states"]["disagree"],
+            "instrument": instrument(s),
+        }
+        for name, s in summary.items()
+    }
     splits = []
     for cell in cells:
         # The verdict, not only the status: an accepted case whose data changed
@@ -246,6 +267,7 @@ def build(
             if claimable
             else None,
             "holes": holes,
+            "per_consumer": per_consumer,
         },
         "consumers": summary,
         "defects": findings["defect"],
@@ -343,11 +365,15 @@ def print_summary(report: dict[str, Any]) -> None:
     for problem in report["problems"]:
         print(f"  PROBLEM {problem}")
     claim = report["claim"]
+    for name, mine in claim["per_consumer"].items():
+        if mine["instrument"]:
+            print(f"claim: {name}: none -- a test instrument, not a consumer")
+        elif mine["claimable"]:
+            print(f"claim: {name}: {mine['text']}, {mine['disagree']} disagree")
+        else:
+            print(f"claim: {name}: not claimable -- {claim['holes'][name]} cells not run")
     if claim["claimable"]:
-        print(f"claim: {claim['text']}")
-    else:
-        holes = ", ".join(f"{k} {v}" for k, v in claim["holes"].items())
-        print(f"claim: not claimable -- cells not run or inexpressible: {holes}")
+        print(f"claim, every consumer: {claim['text']}")
 
 
 def main() -> int:

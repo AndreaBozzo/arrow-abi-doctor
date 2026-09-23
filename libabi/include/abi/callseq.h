@@ -25,8 +25,18 @@
  *                                  process, so it is refused unless the build
  *                                  defines ABI_ENABLE_USE_AFTER_RELEASE, and
  *                                  belongs only behind worker isolation
- *   STREAM_*, EXPECT_EOF           the C Stream Interface (issue #4): refused
+ *   STREAM_GET_SCHEMA / _GET_NEXT  a stream case (abi_case_is_stream): the
+ *   / _GET_LAST_ERROR              first stream op hands the stream over, and
+ *                                  each op is the consumer calling the
+ *                                  stream's own callback
+ *   EXPECT_EOF                     the last get_next answered EOF; anything
+ *                                  else is the harness's producer misbehaving,
+ *                                  so the sequence is invalid
  *   NOP                            nothing
+ *
+ * A stream case hands over a stream, not a schema and an array: IMPORT_* and
+ * MOVE_STRUCT in one are invalid, and a stream op on a reconstruction that is
+ * not a stream (abi_reconstruct_stream) is unsupported.
  *
  * A case with no CALLSEQ runs IMPORT_SCHEMA, IMPORT_ARRAY, RELEASE_BASE.
  */
@@ -69,6 +79,17 @@ typedef struct {
   void (*release_child)(void *ctx, uint32_t index);
   void (*release_dictionary)(void *ctx);
   void (*use_after_release)(void *ctx);
+  /*
+   * The C Stream Interface. import_stream takes the stream, as the imports
+   * above take a schema or an array. The rest are the consumer calling the
+   * stream's callbacks; stream_get_next reports whether the answer was EOF.
+   * A non-zero return is a refusal, with why in `detail`.
+   */
+  int (*import_stream)(void *ctx, struct ArrowArrayStream *stream, char *detail,
+                       size_t detail_size);
+  int (*stream_get_schema)(void *ctx, char *detail, size_t detail_size);
+  int (*stream_get_next)(void *ctx, int *eof, char *detail, size_t detail_size);
+  int (*stream_get_last_error)(void *ctx, char *detail, size_t detail_size);
 } AbiConsumer;
 
 typedef enum {
@@ -102,6 +123,10 @@ void abi_callseq_run(AbiReconstruction *r, const AbiCase *c,
                      const AbiConsumer *consumer, AbiCallseqResult *out);
 
 const char *abi_op_str(AbiOpCode code);
+
+/* Non-zero when the case's CALLSEQ uses the C Stream Interface: reconstruct it
+   with abi_reconstruct_stream(). */
+int abi_case_is_stream(const AbiCase *c);
 
 #ifdef __cplusplus
 } /* extern "C" */

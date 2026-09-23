@@ -103,16 +103,6 @@ static const uint32_t    ALIGN_SHIFTS[] = {0u, 1u, 4u};
 static const char *const LIFECYCLE_NAMES[] = {"direct", "moved", "streamed",
                                               "early-release", "EOF"};
 
-/*
- * Lifecycles this generator can build. The three stream lifecycles need the C
- * Stream Interface (issue #4). They are skipped and counted, never silently
- * dropped: a partial corpus that does not say which cells it left out is a
- * coverage claim with a hole in it.
- */
-static int lifecycle_supported(GenLifecycle l) {
-  return l == GL_DIRECT || l == GL_MOVED;
-}
-
 #define COUNT_OF(a) (sizeof(a) / sizeof((a)[0]))
 
 static int name_index(const char *const *names, size_t count, const char *s) {
@@ -489,6 +479,47 @@ static AbiExpectedOutcome outcome_of(const GenTuple *t) {
                                            : ABI_EXPECT_ACCEPT;
 }
 
+/*
+ * The call sequence of each lifecycle (coverage-matrix 1.7). The ops are part
+ * of the payload, so one array under two lifecycles is two case ids.
+ *
+ *   direct         import the schema, import the array, release
+ *   moved          the same, moved first: bitwise copy to new storage, source
+ *                  marked released, no callback; the lifecycle state machine
+ *                  checks the one release comes from the new location
+ *   streamed       the array as a stream: schema, the one batch, EOF, release
+ *   EOF            a schema-only stream: schema, then EOF at once
+ *   early-release  a schema-only stream, released without get_next
+ */
+static AbiStatus add_callseq(AbiCase *c, GenLifecycle lifecycle) {
+  static const AbiOpCode DIRECT[] = {ABI_OP_IMPORT_SCHEMA, ABI_OP_IMPORT_ARRAY,
+                                     ABI_OP_RELEASE_BASE};
+  static const AbiOpCode MOVED[] = {ABI_OP_MOVE_STRUCT, ABI_OP_IMPORT_SCHEMA,
+                                    ABI_OP_IMPORT_ARRAY, ABI_OP_RELEASE_BASE};
+  static const AbiOpCode STREAMED[] = {
+      ABI_OP_STREAM_GET_SCHEMA, ABI_OP_STREAM_GET_NEXT, ABI_OP_STREAM_GET_NEXT,
+      ABI_OP_EXPECT_EOF, ABI_OP_RELEASE_BASE};
+  static const AbiOpCode EOF_OPS[] = {ABI_OP_STREAM_GET_SCHEMA,
+                                      ABI_OP_STREAM_GET_NEXT, ABI_OP_EXPECT_EOF,
+                                      ABI_OP_RELEASE_BASE};
+  static const AbiOpCode EARLY[] = {ABI_OP_STREAM_GET_SCHEMA,
+                                    ABI_OP_RELEASE_BASE};
+  const AbiOpCode       *ops = DIRECT;
+  size_t                 n = COUNT_OF(DIRECT), i;
+  AbiStatus              st = ABI_OK;
+
+  switch (lifecycle) {
+  case GL_DIRECT: break;
+  case GL_MOVED: ops = MOVED, n = COUNT_OF(MOVED); break;
+  case GL_STREAMED: ops = STREAMED, n = COUNT_OF(STREAMED); break;
+  case GL_EOF: ops = EOF_OPS, n = COUNT_OF(EOF_OPS); break;
+  case GL_EARLY_RELEASE: ops = EARLY, n = COUNT_OF(EARLY); break;
+  }
+  for (i = 0; i < n && st == ABI_OK; i++)
+    st = abi_case_add_op(c, ops[i], 0, 0);
+  return st;
+}
+
 static AbiCase *build_case(const GenTuple *t) {
   AbiCase       *c = abi_case_new(ABI_CLASS_A);
   AbiSchemaNode *root_s, *s;
@@ -542,38 +573,31 @@ static AbiCase *build_case(const GenTuple *t) {
   if (abi_schema_add_child(c, root_s, s) != ABI_OK) goto fail;
   abi_case_set_schema(c, root_s);
 
-  root_a = abi_array_new(c);
-  a = abi_array_new(c);
-  if (!root_a || !a) goto fail;
-  root_a->length = t->length;
-  root_a->null_count = 0;
-  root_a->offset = 0;
-  if (abi_array_add_null_buffer(c, root_a, ABI_ROLE_VALIDITY) != ABI_OK) {
-    goto fail;
-  }
-  a->length = t->length;
-  a->null_count = null_count_of(t);
-  a->offset = t->offset;
-  if (attach_buffers(c, a, t, bufs, count) != ABI_OK) goto fail;
-  if (abi_array_add_child(c, root_a, a) != ABI_OK) goto fail;
-  abi_case_set_array(c, root_a);
-
   /*
-   * `moved` is the same array, moved before it is handed over: bitwise copy to
-   * new storage, source marked released, no callback (coverage-matrix 1.7).
-   * The CALLSEQ executor performs it and the lifecycle state machine checks
-   * that the one release then comes from the new location. The op is part of
-   * the payload, so the two lifecycles of one array are two case ids.
+   * `early-release` and `EOF` deliver a schema and no array (coverage-matrix
+   * 1.7), so their cases are schema-only: the stream answers EOF at once, or
+   * is released before anyone asks. Their five data dimensions sit at the
+   * sentinel (constraint 1) and describe nothing.
    */
-  if (t->lifecycle == GL_MOVED &&
-      abi_case_add_op(c, ABI_OP_MOVE_STRUCT, 0, 0) != ABI_OK) {
-    goto fail;
+  if (t->lifecycle != GL_EARLY_RELEASE && t->lifecycle != GL_EOF) {
+    root_a = abi_array_new(c);
+    a = abi_array_new(c);
+    if (!root_a || !a) goto fail;
+    root_a->length = t->length;
+    root_a->null_count = 0;
+    root_a->offset = 0;
+    if (abi_array_add_null_buffer(c, root_a, ABI_ROLE_VALIDITY) != ABI_OK) {
+      goto fail;
+    }
+    a->length = t->length;
+    a->null_count = null_count_of(t);
+    a->offset = t->offset;
+    if (attach_buffers(c, a, t, bufs, count) != ABI_OK) goto fail;
+    if (abi_array_add_child(c, root_a, a) != ABI_OK) goto fail;
+    abi_case_set_array(c, root_a);
   }
-  if (abi_case_add_op(c, ABI_OP_IMPORT_SCHEMA, 0, 0) != ABI_OK ||
-      abi_case_add_op(c, ABI_OP_IMPORT_ARRAY, 0, 0) != ABI_OK ||
-      abi_case_add_op(c, ABI_OP_RELEASE_BASE, 0, 0) != ABI_OK) {
-    goto fail;
-  }
+
+  if (add_callseq(c, t->lifecycle) != ABI_OK) goto fail;
 
   free_buffers(bufs, count);
   return c;
@@ -598,7 +622,6 @@ typedef struct {
   uint64_t total_bytes;
   uint64_t max_bytes;
   size_t   generated;
-  size_t   skipped[COUNT_OF(LIFECYCLE_NAMES)];
 } GenState;
 
 static void tuple_text(const GenTuple *t, char *out, size_t size) {
@@ -836,7 +859,6 @@ int main(int argc, char **argv) {
   char          manifest_path[512];
   unsigned long lineno = 0;
   int           i, rc = 0;
-  size_t        k;
 
   for (i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--out") == 0 && i + 1 < argc) {
@@ -881,10 +903,6 @@ int main(int argc, char **argv) {
       rc = 1;
       break;
     }
-    if (!lifecycle_supported(t.lifecycle)) {
-      g.skipped[t.lifecycle]++;
-      continue;
-    }
     if (emit_case(&g, &t, out_dir, manifest, err, sizeof(err)) != 0) {
       fprintf(stderr, "error: line %lu [%s]: %s\n", lineno, line, err);
       rc = 1;
@@ -905,12 +923,6 @@ int main(int argc, char **argv) {
     printf("bytes     total %lu, max %lu, mean %lu\n",
            (unsigned long)g.total_bytes, (unsigned long)g.max_bytes,
            (unsigned long)(g.total_bytes / g.generated));
-  }
-  for (k = 0; k < COUNT_OF(LIFECYCLE_NAMES); k++) {
-    if (g.skipped[k]) {
-      printf("skipped   %lu with lifecycle %s (not yet constructible)\n",
-             (unsigned long)g.skipped[k], LIFECYCLE_NAMES[k]);
-    }
   }
   return rc;
 }

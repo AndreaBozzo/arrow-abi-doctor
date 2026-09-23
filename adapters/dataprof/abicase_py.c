@@ -78,6 +78,11 @@ typedef struct {
   PyObject         *owner;
 } ArrayCapsule;
 
+typedef struct {
+  struct ArrowArrayStream stream;
+  PyObject               *owner;
+} StreamCapsule;
+
 static void schema_capsule_destructor(PyObject *capsule) {
   SchemaCapsule *p =
       (SchemaCapsule *)PyCapsule_GetPointer(capsule, "arrow_schema");
@@ -175,6 +180,19 @@ static PyObject *make_array_capsule(AbiCaseObject *self) {
   self->array_taken = 1;
   self->capsules_outstanding++;
   return cap;
+}
+
+static void stream_capsule_destructor(PyObject *capsule) {
+  StreamCapsule *p =
+      (StreamCapsule *)PyCapsule_GetPointer(capsule, "arrow_array_stream");
+  if (p == NULL) {
+    PyErr_Clear();
+    return;
+  }
+  if (p->stream.release != NULL) p->stream.release(&p->stream);
+  ((AbiCaseObject *)p->owner)->capsules_outstanding--;
+  Py_XDECREF(p->owner);
+  free(p);
 }
 
 /* --- the Arrow PyCapsule interface ---------------------------------------- */
@@ -369,7 +387,7 @@ static PyObject *AbiCase_lifecycle_verdict(PyObject *selfobj, PyObject *args) {
     PyObject                  *s;
     snprintf(item, sizeof(item), "%s %s %s",
              abi_lifecycle_rule_str((AbiLifecycleRule)f->rule),
-             f->is_array ? "array" : "schema", f->path);
+             abi_lifecycle_object_str((AbiLifecycleObject)f->object), f->path);
     s = PyUnicode_FromString(item);
     if (s == NULL || PyList_Append(list, s) != 0) {
       Py_XDECREF(s);
@@ -450,7 +468,49 @@ static void AbiCase_dealloc(PyObject *selfobj) {
   Py_TYPE(self)->tp_free(selfobj);
 }
 
+/*
+ * __arrow_c_stream__(requested_schema=None) -> stream capsule, for a case
+ * loaded with load(path, True). Moved into the capsule and handed over, both
+ * logged, as for the schema and the array.
+ */
+static PyObject *AbiCase_arrow_c_stream(PyObject *selfobj, PyObject *args) {
+  AbiCaseObject           *self = (AbiCaseObject *)selfobj;
+  PyObject                *requested = Py_None, *cap;
+  struct ArrowArrayStream *src = abi_reconstruction_stream(self->rec);
+  StreamCapsule           *p;
+
+  if (!PyArg_ParseTuple(args, "|O", &requested)) return NULL;
+  if (src == NULL) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "not loaded as a stream: load(path, True)");
+    return NULL;
+  }
+  if (src->release == NULL) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "stream already moved out of this case");
+    return NULL;
+  }
+  p = (StreamCapsule *)calloc(1, sizeof(StreamCapsule));
+  if (p == NULL) return PyErr_NoMemory();
+  abi_reconstruction_move_stream(self->rec, &p->stream, src);
+  p->owner = (PyObject *)self;
+  Py_INCREF(self);
+  cap = PyCapsule_New(&p->stream, "arrow_array_stream",
+                      stream_capsule_destructor);
+  if (cap == NULL) {
+    abi_reconstruction_harness_release_stream(self->rec, &p->stream);
+    Py_DECREF(self);
+    free(p);
+    return NULL;
+  }
+  abi_reconstruction_note_stream_import(self->rec, &p->stream);
+  self->capsules_outstanding++;
+  return cap;
+}
+
 static PyMethodDef AbiCase_methods[] = {
+    {"__arrow_c_stream__", AbiCase_arrow_c_stream, METH_VARARGS,
+     "Arrow PyCapsule interface: export the stream (a load(path, True) case)."},
     {"__arrow_c_schema__", AbiCase_arrow_c_schema, METH_NOARGS,
      "Arrow PyCapsule interface: export the schema."},
     {"__arrow_c_array__", AbiCase_arrow_c_array, METH_VARARGS,
@@ -484,7 +544,7 @@ static PyTypeObject AbiCaseType = {
 /* --- module functions ------------------------------------------------------
  */
 
-static PyObject *wrap_case(AbiCase *c) {
+static PyObject *wrap_case(AbiCase *c, int stream) {
   AbiCaseObject     *obj;
   AbiReconstruction *rec = NULL;
   AbiError           err;
@@ -509,7 +569,8 @@ static PyObject *wrap_case(AbiCase *c) {
     }
     memcpy(ops, c->ops, op_count * sizeof(*ops));
   }
-  st = abi_reconstruct(c, &rec, &err);
+  st = stream ? abi_reconstruct_stream(c, &rec, &err)
+              : abi_reconstruct(c, &rec, &err);
   abi_case_free(c); /* the reconstruction copies everything it needs */
   if (st != ABI_OK) {
     free(ops);
@@ -543,8 +604,9 @@ static PyObject *mod_load(PyObject *Py_UNUSED(m), PyObject *args) {
   AbiCase    *c = NULL;
   AbiError    err;
   AbiStatus   st;
+  int         stream = 0;
 
-  if (!PyArg_ParseTuple(args, "s", &path)) return NULL;
+  if (!PyArg_ParseTuple(args, "s|p", &path, &stream)) return NULL;
   memset(&err, 0, sizeof(err));
   st = abi_case_read_file(path, &c, &err);
   if (st != ABI_OK) {
@@ -553,20 +615,20 @@ static PyObject *mod_load(PyObject *Py_UNUSED(m), PyObject *args) {
                  (unsigned long long)err.offset);
     return NULL;
   }
-  return wrap_case(c);
+  return wrap_case(c, stream);
 }
 
 static PyObject *mod_smoke(PyObject *Py_UNUSED(m), PyObject *Py_UNUSED(a)) {
-  return wrap_case(abi_fixture_smoke());
+  return wrap_case(abi_fixture_smoke(), 0);
 }
 
 static PyObject *mod_rich(PyObject *Py_UNUSED(m), PyObject *Py_UNUSED(a)) {
-  return wrap_case(abi_fixture_rich());
+  return wrap_case(abi_fixture_rich(), 0);
 }
 
 static PyObject *mod_bad_dict_index(PyObject *Py_UNUSED(m),
                                     PyObject *Py_UNUSED(a)) {
-  return wrap_case(abi_fixture_bad_dict_index());
+  return wrap_case(abi_fixture_bad_dict_index(), 0);
 }
 
 /*
@@ -598,7 +660,8 @@ static PyMethodDef module_methods[] = {
     {"digest", mod_digest, METH_VARARGS,
      "Digest (schema_capsule, array_capsule) without consuming them."},
     {"load", mod_load, METH_VARARGS,
-     "Load a .abicase file and reconstruct it."},
+     "load(path, stream=False): reconstruct a .abicase; as an ArrowArrayStream "
+     "when stream is true."},
     {"smoke", mod_smoke, METH_NOARGS,
      "The plainly-valid struct<int32, utf8> fixture."},
     {"rich", mod_rich, METH_NOARGS, "The full-feature fixture."},

@@ -69,6 +69,21 @@ typedef enum {
    */
   ABI_EV_SCHEMA_RETURNED,
   ABI_EV_ARRAY_RETURNED,
+  /*
+   * The C Stream Interface (abi_reconstruct_stream). The stream is a base
+   * structure like the others: exported, possibly moved, handed over,
+   * released exactly once. A batch get_next() hands over is an ARRAY_MOVED /
+   * ARRAY_IMPORTED pair at the consumer's `out`; a schema get_schema() hands
+   * over is SCHEMA_EXPORTED / SCHEMA_IMPORTED there. STREAM_EOF is get_next()
+   * answering with the released array that marks the end.
+   */
+  ABI_EV_STREAM_EXPORTED,
+  ABI_EV_STREAM_MOVED,
+  ABI_EV_STREAM_IMPORTED,
+  ABI_EV_STREAM_RETURNED,
+  ABI_EV_STREAM_RELEASE_ENTER,
+  ABI_EV_STREAM_RELEASE_EXIT,
+  ABI_EV_STREAM_EOF,
   ABI_EV__MAX
 } AbiEventKind;
 
@@ -129,6 +144,35 @@ struct ArrowSchema *abi_reconstruction_schema(AbiReconstruction *r);
 struct ArrowArray  *abi_reconstruction_array(AbiReconstruction *r);
 
 const AbiObserver *abi_reconstruction_observer(const AbiReconstruction *r);
+
+/*
+ * The case as an ArrowArrayStream (docs/coverage-matrix.md 1.7, the stream
+ * lifecycles). get_schema() builds a fresh schema on every call, from a copy of
+ * the case the reconstruction keeps. get_next() hands over the case's array --
+ * moved out of the reconstruction, so it can be handed over once -- and then
+ * answers EOF; a schema-only case answers EOF at once. Releasing the stream
+ * releases a batch it never handed over, nested inside its own release, as a
+ * producer's stream owns what it has not yet delivered.
+ *
+ * No schema is pre-exported: abi_reconstruction_schema() of a stream
+ * reconstruction is a released shell. Hand the stream over instead.
+ */
+AbiStatus abi_reconstruct_stream(const AbiCase *c, AbiReconstruction **out,
+                                 AbiError *err);
+
+/* The stream of a stream reconstruction; NULL for any other. */
+struct ArrowArrayStream *abi_reconstruction_stream(AbiReconstruction *r);
+
+/* Arrow move semantics for the stream, as for the schema and the array. */
+AbiStatus abi_reconstruction_move_stream(AbiReconstruction       *r,
+                                         struct ArrowArrayStream *dst,
+                                         struct ArrowArrayStream *src);
+void abi_reconstruction_note_stream_import(AbiReconstruction             *r,
+                                           const struct ArrowArrayStream *addr);
+void abi_reconstruction_note_stream_returned(
+    AbiReconstruction *r, const struct ArrowArrayStream *addr);
+void abi_reconstruction_harness_release_stream(AbiReconstruction       *r,
+                                               struct ArrowArrayStream *s);
 
 /*
  * Arrow move semantics on a base structure: `*dst = *src`, then `src` is marked

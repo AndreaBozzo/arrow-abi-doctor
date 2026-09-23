@@ -54,9 +54,19 @@ const char *abi_lifecycle_rule_str(AbiLifecycleRule rule);
 
 #define ABI_LC_MAX_FINDINGS 16
 
+/* The base structures a case can hand over, one state machine each. */
+typedef enum {
+  ABI_LC_SCHEMA = 0,
+  ABI_LC_ARRAY,
+  ABI_LC_STREAM,
+  ABI_LC__OBJECTS
+} AbiLifecycleObject;
+
+const char *abi_lifecycle_object_str(AbiLifecycleObject object);
+
 typedef struct {
   uint8_t  rule;                     /* AbiLifecycleRule */
-  uint8_t  is_array;                 /* 0: the schema tree, 1: the array tree */
+  uint8_t  object;                   /* AbiLifecycleObject */
   uint32_t seq;                      /* the event that broke the rule */
   char     path[ABI_EVENT_PATH_MAX]; /* "/" for a base, deeper for a child */
 } AbiLifecycleFinding;
@@ -69,7 +79,12 @@ typedef struct {
 } AbiLifecycleVerdict;
 
 /*
- * Walks the log. `strict_location` asks for the address rule too, which is
+ * Walks the log. A stream's schemas are handed over one get_schema() at a
+ * time and judged by the schema machine in turn; the sequences the corpus runs
+ * ask for one. A stream releasing a batch it never handed over is the producer
+ * releasing what it still owns: never imported, so not a finding.
+ *
+ * `strict_location` asks for the address rule too, which is
  * sound only when every move of the structures was logged -- when the consumer
  * is ours, not when it is a real engine with its own storage.
  *

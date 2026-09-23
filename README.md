@@ -6,17 +6,18 @@ An adversarial, structure-aware harness for the Arrow **C Data Interface** and
 **Status: M1, in progress.** The `.abicase` container format is implemented and
 verified across three platforms including a big-endian one; cases reconstruct
 into real `ArrowSchema` / `ArrowArray` structures with the lifecycle observed.
-The bounded conformance model is frozen, and its `direct` and `moved` lifecycles
-are generated as Corpus A — 3760 of its 5650 cells — each run through its own
-call sequence, with the lifecycle judged as a path through a state machine
-rather than counted; a dual digest can describe either side of a handoff; and
-each consumer runs in its own supervised process, so a crash is a recorded
-result rather than the end of a run. pyarrow and dataprof — Arrow C++ and
-arrow-rs — run under it as the first differential pair, and every run reduces to
-the per-cell states the coverage model defines. nanoarrow's validator runs
-beside them as the reference voice, and Corpus B1 holds ten invalid producers,
-each resting on a clause quoted verbatim. The stream interface and the native
-Arrow C++ and DuckDB adapters are what M1 still owes.
+The bounded conformance model is frozen, and all five of its lifecycles are
+generated as Corpus A — all 5650 of its cells — each run through its own call
+sequence, with the lifecycle judged as a path through a state machine rather
+than counted; a dual digest can describe either side of a handoff; and each
+consumer runs in its own supervised process, so a crash is a recorded result
+rather than the end of a run. pyarrow and dataprof — Arrow C++ and arrow-rs —
+run under it as the first differential pair, and every run reduces to the
+per-cell states the coverage model defines. nanoarrow's validator runs beside
+them as the reference voice, and Corpus B1 holds ten invalid producers, each
+resting on a clause quoted verbatim. Every cell of the model is constructible,
+streams included, and null, nanoarrow and pyarrow each run all 5650 with no
+disagreement. The native Arrow C++ and DuckDB adapters are what M1 still owes.
 
 ---
 
@@ -190,7 +191,8 @@ milestone (§3.6 of the design spec):
 | null bitmap, all-null, zero-null | yes | yes |
 | offset ≠ 0, slicing, length 0 | yes | yes |
 | move semantics | yes | yes |
-| stream: EOF, early release, mid-stream error | yes | yes |
+| stream: one batch, EOF, early release | yes | yes |
+| stream: several batches, mid-stream error | no (#19) | yes |
 | non-standard alignment | yes | yes |
 | buffer aliasing | yes | yes |
 | dictionary + slicing | no | yes |

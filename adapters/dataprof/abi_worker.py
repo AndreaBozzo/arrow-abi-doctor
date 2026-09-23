@@ -141,11 +141,21 @@ def describe(exc: BaseException) -> str:
 
 # A case with no CALLSEQ runs the default path, as the C executor does.
 DEFAULT_CALLSEQ = [("IMPORT_SCHEMA", 0, 0), ("IMPORT_ARRAY", 0, 0), ("RELEASE_BASE", 0, 0)]
-# What this worker can do. Anything else is refused by name before anything
+STREAM_OPS = ("STREAM_GET_SCHEMA", "STREAM_GET_NEXT", "STREAM_GET_LAST_ERROR", "EXPECT_EOF")
+ARRAY_OPS = ("NOP", "MOVE_STRUCT", "IMPORT_SCHEMA", "IMPORT_ARRAY", "RELEASE_BASE")
+# What each consumer can do. Anything else is refused by name before anything
 # runs -- never replaced by the default path, which would report a case as run
-# when the part that made it a case was skipped. The class C ops need a
-# consumer that can be told to misbehave, and neither of these can.
-PERFORMED = ("NOP", "MOVE_STRUCT", "IMPORT_SCHEMA", "IMPORT_ARRAY", "RELEASE_BASE")
+# when the part that made it a case was skipped. The class C ops need a consumer
+# that can be told to misbehave, and neither of these can.
+PERFORMED = {
+    "pyarrow": (*ARRAY_OPS, "STREAM_GET_SCHEMA", "STREAM_GET_NEXT", "EXPECT_EOF"),
+    "dataprof": ARRAY_OPS,
+}
+# Why, where a consumer cannot perform a whole kind of sequence.
+NOT_PERFORMED_BECAUSE = {
+    "dataprof": "dataprof.profile() takes __arrow_c_array__ producers and refuses a "
+    "stream-only one as an unsupported source type (checked on 0.11.0)",
+}
 
 
 def import_into(consumer: str, case: Any, digest: dict[str, Any]) -> tuple[str, Any]:
@@ -185,6 +195,102 @@ def inject(fault: tuple[str, int] | None, index: int) -> None:
     faulthandler._sigsegv()  # type: ignore[attr-defined]
 
 
+class SequenceInvalid(Exception):
+    """The sequence cannot run as written -- the harness's side, not the consumer's."""
+
+
+def refusal(consumer: str, names: list[str]) -> str | None:
+    """The first op this consumer cannot perform, with why; None when it can do all."""
+    refused = next((n for n in names if n not in PERFORMED[consumer]), None)
+    if refused is None and "IMPORT_SCHEMA" in names and "IMPORT_ARRAY" not in names:
+        refused = "IMPORT_SCHEMA"  # a schema-only handoff: neither consumer takes one
+    if refused is None:
+        return None
+    why = f"{refused}: not performed by the {consumer} worker"
+    if refused in STREAM_OPS and consumer in NOT_PERFORMED_BECAUSE:
+        why += f" -- {NOT_PERFORMED_BECAUSE[consumer]}"
+    return why
+
+
+class Session:
+    """What the consumer holds while one case's call sequence runs.
+
+    Each op is one call to step(). The references are the hold: a consumer
+    object kept alive keeps its capsule, and so its structure, alive, and
+    dropping it is the consumer's release.
+    """
+
+    def __init__(
+        self,
+        consumer: str,
+        case: Any,
+        digest: dict[str, Any],
+        fault: tuple[str, int] | None,
+        index: int,
+    ) -> None:
+        self.consumer, self.case, self.digest = consumer, case, digest
+        self.fault, self.index = fault, index
+        self.held: Any = None
+        self.reader: Any = None
+        self.batch: Any = None
+        self.last_eof: bool | None = None
+        self.rows = self.batches = 0
+        self.detail = "ran its call sequence"
+
+    def step(self, name: str) -> None:
+        if name == "MOVE_STRUCT":
+            self.case.move()
+        elif name == "IMPORT_ARRAY":
+            inject(self.fault, self.index)
+            self.detail, self.held = import_into(self.consumer, self.case, self.digest)
+        elif name == "STREAM_GET_SCHEMA":
+            self.open_stream()
+        elif name == "STREAM_GET_NEXT":
+            self.open_stream()
+            self.next_batch()
+        elif name == "EXPECT_EOF" and self.last_eof is not True:
+            raise SequenceInvalid(
+                "EXPECT_EOF: the stream had not answered EOF -- the harness's "
+                "producer delivered more than the case holds"
+            )
+        elif name == "RELEASE_BASE":
+            self.drop()
+
+    def open_stream(self) -> None:
+        if self.reader is not None:
+            return
+        import pyarrow
+
+        inject(self.fault, self.index)
+        # Takes the stream and calls get_schema() on it.
+        self.reader = pyarrow.RecordBatchReader.from_stream(self.case)
+        self.detail = "schema only"
+
+    def next_batch(self) -> None:
+        import _abicase
+
+        self.batch = None  # done with the last batch, before asking for the next
+        try:
+            self.batch = self.reader.read_next_batch()
+        except StopIteration:
+            self.last_eof = True
+        else:
+            self.last_eof = False
+            self.batches += 1
+            self.rows += self.batch.num_rows
+            if self.batches == 1:
+                try:
+                    self.digest["received"] = _abicase.digest(*self.batch.__arrow_c_array__())
+                except ValueError as exc:
+                    self.digest["received_error"] = str(exc)
+        self.detail = f"{self.rows} rows in {self.batches} batch(es)" + (
+            ", then EOF" if self.last_eof else ""
+        )
+
+    def drop(self) -> None:
+        self.held = self.reader = self.batch = None
+
+
 def run_case(consumer: str, path: str, index: int, fault: tuple[str, int] | None) -> dict[str, Any]:
     import _abicase
 
@@ -194,6 +300,8 @@ def run_case(consumer: str, path: str, index: int, fault: tuple[str, int] | None
         return {"case": path, "id": "", "status": "error", "detail": describe(exc)}
     case_id = case.case_id()
 
+    # What is handed over, digested before the handoff -- from the array form of
+    # the case, which a stream case has too: the data is the same either way.
     digest: dict[str, Any] = {"ver": 1}
     try:
         digest["sent"] = case.digest()
@@ -201,55 +309,50 @@ def run_case(consumer: str, path: str, index: int, fault: tuple[str, int] | None
         digest["sent_error"] = str(exc)
 
     ops = case.callseq()
+    names = [name for name, _a0, _a1 in ops or DEFAULT_CALLSEQ]
+    if any(name in STREAM_OPS for name in names):
+        # Executed on the stream form; the array form was only ever digested,
+        # never handed over, so its own log judges nothing.
+        case.release_all()
+        case = _abicase.load(path, True)
     callseq: dict[str, Any] = {
         "outcome": "accepted",
         "defaulted": not ops,
-        "op_count": len(ops or DEFAULT_CALLSEQ),
+        "op_count": len(names),
         "executed": 0,
         "ops": [],
     }
-    names = [name for name, _a0, _a1 in ops or DEFAULT_CALLSEQ]
-    refused = next((n for n in names if n not in PERFORMED), None)
-    if refused is None and "IMPORT_SCHEMA" in names and "IMPORT_ARRAY" not in names:
-        refused = "IMPORT_SCHEMA"  # a schema-only handoff: neither consumer takes one
 
     panicked = False
-    status, detail = "accepted", "ran its call sequence"
-    if refused is not None:
-        callseq["outcome"] = "unsupported"
-        status = "error"
-        detail = f"{refused}: not performed by the {consumer} worker"
+    status = "accepted"
+    session = Session(consumer, case, digest, fault, index)
+    why_not = refusal(consumer, names)
+    if why_not is not None:
+        callseq["outcome"], status, session.detail = "unsupported", "error", why_not
     else:
-        held: Any = None
         for name in names:
-            if name == "MOVE_STRUCT":
-                case.move()
-            elif name == "IMPORT_ARRAY":
-                try:
-                    inject(fault, index)
-                    # BaseException: pyo3's PanicException derives from it so
-                    # that a Rust panic is not swallowed by `except Exception`,
-                    # and a consumer that panics has to be a recorded
-                    # rejection, not the end of the worker.
-                    detail, held = import_into(consumer, case, digest)
-                except BaseException as exc:  # noqa: BLE001 -- see above; load-bearing
-                    detail, status = describe(exc), "rejected"
-                    callseq["outcome"] = "rejected"
-                    # Not an Exception means a panic crossed the FFI boundary:
-                    # the worker survived it, so the line says `rejected`, but
-                    # it is not the clean refusal that word means elsewhere
-                    # (dataprof#609 was one of these).
-                    panicked = not isinstance(exc, Exception)
-                    digest.pop("received", None)
-                    digest.pop("received_error", None)
-                    break
-            elif name == "RELEASE_BASE":
-                held = None  # the consumer's objects go, and with them its hold
+            try:
+                session.step(name)
+            except SequenceInvalid as exc:
+                callseq["outcome"], status, session.detail = "invalid", "error", str(exc)
+                break
+            except BaseException as exc:  # noqa: BLE001 -- see below; load-bearing
+                # BaseException: pyo3's PanicException derives from it so that a
+                # Rust panic is not swallowed by `except Exception`, and a
+                # consumer that panics has to be a recorded rejection, not the
+                # end of the worker. Not an Exception means a panic crossed the
+                # FFI boundary: the worker survived it, so the line says
+                # `rejected`, but it is not the clean refusal that word means
+                # elsewhere (dataprof#609 was one of these).
+                callseq["outcome"], status, session.detail = "rejected", "rejected", describe(exc)
+                panicked = not isinstance(exc, Exception)
+                digest.pop("received", None)
+                digest.pop("received_error", None)
+                break
             callseq["executed"] += 1
             callseq["ops"].append(name)
-        # Whatever the sequence left in the consumer's hands goes with the case:
-        # the reference is what kept it alive, so dropping it is the release.
-        del held
+    # Whatever the sequence left in the consumer's hands goes with the case.
+    session.drop()
 
     # Every consumer object is gone by now, so the capsules have been collected
     # and released what the consumer did not; release_all() then cleans up
@@ -261,7 +364,7 @@ def run_case(consumer: str, path: str, index: int, fault: tuple[str, int] | None
         "case": path,
         "id": case_id,
         "status": status,
-        "detail": detail,
+        "detail": session.detail,
         "observer": observer(case),
         "digest": digest,
         "callseq": callseq,
@@ -269,7 +372,7 @@ def run_case(consumer: str, path: str, index: int, fault: tuple[str, int] | None
     }
     if panicked:
         line["panicked"] = True
-    del case
+    del session, case
     return line
 
 

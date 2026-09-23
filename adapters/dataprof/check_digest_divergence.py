@@ -42,6 +42,7 @@ from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 MANIFEST = ROOT / "corpus" / "a" / "manifest.tsv"
+DATA_FREE = ("early-release", "EOF")
 
 
 def find_worker() -> pathlib.Path:
@@ -103,10 +104,12 @@ def run_worker(worker: pathlib.Path, paths: list[str]) -> dict[str, Any]:
 def main() -> int:
     if not MANIFEST.is_file():
         raise SystemExit(f"no corpus at {MANIFEST.parent}; run tools/gen_corpus.py first")
+    # The data-free lifecycles hand over no array, so there is nothing whose
+    # offset could be dropped; they are left out by name, not by outcome.
     rows = [
         line.split("\t")
         for line in MANIFEST.read_text(encoding="utf-8").splitlines()
-        if line and not line.startswith("#")
+        if line and not line.startswith("#") and line.split("\t")[8] not in DATA_FREE
     ]
     paths = {row[0]: f"corpus/a/{row[0]}.abicase" for row in rows}
     worker = find_worker()

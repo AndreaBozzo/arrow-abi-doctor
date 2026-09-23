@@ -177,7 +177,8 @@ static void describe(const AbiLifecycleVerdict *v) {
   for (i = 0; i < v->count && i < ABI_LC_MAX_FINDINGS; i++) {
     fprintf(stderr, "    finding: %s %s %s\n",
             abi_lifecycle_rule_str((AbiLifecycleRule)v->findings[i].rule),
-            v->findings[i].is_array ? "array" : "schema", v->findings[i].path);
+            abi_lifecycle_object_str((AbiLifecycleObject)v->findings[i].object),
+            v->findings[i].path);
   }
 }
 
@@ -287,7 +288,8 @@ static void test_a_refusal_that_keeps_the_schema_is_named(void) {
   tc.never_release = 1;
   run_case(c, &tc, &run);
   CHECKF(count_rule(&run.loose, ABI_LC_NOT_RELEASED_BY_CONSUMER) == 1 &&
-             run.loose.count == 1 && !run.loose.findings[0].is_array,
+             run.loose.count == 1 &&
+             run.loose.findings[0].object == ABI_LC_SCHEMA,
          "%u finding(s)", run.loose.count);
   if (run.loose.count != 1) describe(&run.loose);
   CHECKF(!run.leaked, "%s", "leaked");
@@ -366,8 +368,9 @@ static void test_unperformable_ops_are_refused_by_name(void) {
   memset(&tc, 0, sizeof(tc));
   c = smoke_with(stream, 1);
   run_case(c, &tc, &run);
+  /* A stream op on a reconstruction that is not a stream. */
   CHECKF(run.result.outcome == ABI_CALLSEQ_UNSUPPORTED &&
-             strstr(run.result.detail, "#4") != NULL,
+             strstr(run.result.detail, "not reconstructed as a stream") != NULL,
          "stream: %s %s", abi_callseq_outcome_str(run.result.outcome),
          run.result.detail);
   CHECKF(!run.leaked, "%s", "stream: leaked");
@@ -427,7 +430,251 @@ static void test_a_consumer_without_the_callback_is_unsupported(void) {
   abi_case_free(c);
 }
 
+/* --- the C Stream Interface ----------------------------------------------- */
+
+/* A consumer of a stream: takes it, calls its callbacks into storage of its
+   own, and releases what it holds. */
+typedef struct {
+  struct ArrowArrayStream *stream;
+  struct ArrowSchema       schema;
+  struct ArrowArray        batch;
+  struct ArrowArray        spare; /* where the next goes while one is held */
+  int                      never_release;
+  int                      batches;
+} StreamConsumer;
+
+static int sc_import(void *ctx, struct ArrowArrayStream *s, char *why,
+                     size_t n) {
+  (void)why;
+  (void)n;
+  ((StreamConsumer *)ctx)->stream = s;
+  return 0;
+}
+
+static int sc_get_schema(void *ctx, char *why, size_t n) {
+  StreamConsumer *sc = (StreamConsumer *)ctx;
+  int             rc = sc->stream->get_schema(sc->stream, &sc->schema);
+  if (rc) snprintf(why, n, "get_schema: %d", rc);
+  return rc;
+}
+
+static int sc_get_next(void *ctx, int *eof, char *why, size_t n) {
+  StreamConsumer    *sc = (StreamConsumer *)ctx;
+  int                rc;
+  struct ArrowArray *into;
+  /* A consumer done with the previous batch lets it go before the next; one
+     that keeps it asks for the next into a second slot, not over the first. */
+  if (sc->batch.release && !sc->never_release) sc->batch.release(&sc->batch);
+  into = sc->batch.release ? &sc->spare : &sc->batch;
+  rc = sc->stream->get_next(sc->stream, into);
+  if (rc) {
+    snprintf(why, n, "get_next: %d", rc);
+    return rc;
+  }
+  *eof = into->release == NULL;
+  sc->batches += !*eof;
+  return 0;
+}
+
+static void sc_release_base(void *ctx) {
+  StreamConsumer *sc = (StreamConsumer *)ctx;
+  if (sc->never_release) return;
+  if (sc->batch.release) sc->batch.release(&sc->batch);
+  if (sc->schema.release) sc->schema.release(&sc->schema);
+  if (sc->stream && sc->stream->release) sc->stream->release(sc->stream);
+}
+
+typedef struct {
+  AbiCallseqResult    result;
+  AbiLifecycleVerdict strict;
+  int                 leaked;
+  int                 eofs;
+  int                 batches;
+  int                 harness_releases;
+} StreamRun;
+
+static void run_stream(AbiCase *c, StreamConsumer *sc, StreamRun *out) {
+  AbiReconstruction *r = NULL;
+  AbiConsumer        consumer;
+  const AbiObserver *o;
+  uint32_t           i;
+
+  memset(out, 0, sizeof(*out));
+  memset(&consumer, 0, sizeof(consumer));
+  consumer.ctx = sc;
+  consumer.import_stream = sc_import;
+  consumer.stream_get_schema = sc_get_schema;
+  consumer.stream_get_next = sc_get_next;
+  consumer.release_base = sc_release_base;
+  if (abi_reconstruct_stream(c, &r, NULL) != ABI_OK) return;
+  abi_callseq_run(r, c, &consumer, &out->result);
+  abi_reconstruction_release_all(r);
+  o = abi_reconstruction_observer(r);
+  abi_lifecycle_verify(o, 1, &out->strict);
+  out->leaked = abi_reconstruction_leaked(r);
+  for (i = 0; i < o->event_count; i++) {
+    out->eofs += o->events[i].kind == ABI_EV_STREAM_EOF;
+    out->harness_releases += o->events[i].kind == ABI_EV_HARNESS_RELEASED;
+  }
+  out->batches = sc->batches;
+  /*
+   * Measured; now the test cleans up after its own misbehaving consumer, whose
+   * structures live in storage the harness cannot reach. Before the free: the
+   * release callbacks report to the reconstruction.
+   */
+  if (sc->batch.release) sc->batch.release(&sc->batch);
+  if (sc->spare.release) sc->spare.release(&sc->spare);
+  if (sc->schema.release) sc->schema.release(&sc->schema);
+  abi_reconstruction_free(r);
+}
+
+static AbiCase *with_ops(AbiCase *c, const AbiOp *ops, uint32_t count) {
+  uint32_t i;
+  if (!c) return NULL;
+  c->op_count = 0;
+  for (i = 0; i < count; i++)
+    abi_case_add_op(c, (AbiOpCode)ops[i].code, ops[i].arg0, ops[i].arg1);
+  return c;
+}
+
+static const AbiOp STREAMED[] = {
+    OP(ABI_OP_STREAM_GET_SCHEMA), OP(ABI_OP_STREAM_GET_NEXT),
+    OP(ABI_OP_STREAM_GET_NEXT), OP(ABI_OP_EXPECT_EOF), OP(ABI_OP_RELEASE_BASE)};
+static const AbiOp EOF_OPS[] = {OP(ABI_OP_STREAM_GET_SCHEMA),
+                                OP(ABI_OP_STREAM_GET_NEXT),
+                                OP(ABI_OP_EXPECT_EOF), OP(ABI_OP_RELEASE_BASE)};
+static const AbiOp EARLY[] = {OP(ABI_OP_STREAM_GET_SCHEMA),
+                              OP(ABI_OP_RELEASE_BASE)};
+
+static void test_a_stream_delivers_one_batch_then_eof(void) {
+  AbiCase       *c = with_ops(abi_fixture_smoke(), STREAMED, 5);
+  StreamConsumer sc;
+  StreamRun      run;
+
+  g_test = "streamed";
+  memset(&sc, 0, sizeof(sc));
+  CHECKF(abi_case_is_stream(c), "%s", "a stream case is not seen as one");
+  run_stream(c, &sc, &run);
+  CHECKF(run.result.outcome == ABI_CALLSEQ_ACCEPTED && run.result.executed == 5,
+         "outcome %s after %u ops: %s",
+         abi_callseq_outcome_str(run.result.outcome), run.result.executed,
+         run.result.detail);
+  CHECKF(run.batches == 1 && run.eofs == 1, "%d batch(es), %d EOF(s)",
+         run.batches, run.eofs);
+  CHECKF(run.strict.count == 0, "%u finding(s)", run.strict.count);
+  if (run.strict.count) describe(&run.strict);
+  CHECKF(!run.leaked, "%s", "leaked");
+  abi_case_free(c);
+}
+
+static void test_a_schema_only_stream_answers_eof_at_once(void) {
+  AbiCase       *c = with_ops(abi_fixture_minimal(), EOF_OPS, 4);
+  StreamConsumer sc;
+  StreamRun      run;
+
+  g_test = "EOF";
+  memset(&sc, 0, sizeof(sc));
+  run_stream(c, &sc, &run);
+  CHECKF(run.result.outcome == ABI_CALLSEQ_ACCEPTED, "outcome %s: %s",
+         abi_callseq_outcome_str(run.result.outcome), run.result.detail);
+  CHECKF(run.batches == 0 && run.eofs == 1, "%d batch(es), %d EOF(s)",
+         run.batches, run.eofs);
+  CHECKF(run.strict.count == 0 && !run.leaked, "%u finding(s), leaked %d",
+         run.strict.count, run.leaked);
+  if (run.strict.count) describe(&run.strict);
+  abi_case_free(c);
+}
+
+/* Released without get_next: the stream releases the batch it still owns,
+   nested in its own release, and nobody is blamed for it. */
+static void test_an_early_release_lets_the_stream_free_its_batch(void) {
+  AbiCase       *c = with_ops(abi_fixture_smoke(), EARLY, 2);
+  StreamConsumer sc;
+  StreamRun      run;
+
+  g_test = "early release";
+  memset(&sc, 0, sizeof(sc));
+  run_stream(c, &sc, &run);
+  CHECKF(run.result.outcome == ABI_CALLSEQ_ACCEPTED && run.batches == 0,
+         "outcome %s, %d batch(es)",
+         abi_callseq_outcome_str(run.result.outcome), run.batches);
+  CHECKF(run.strict.count == 0, "%u finding(s)", run.strict.count);
+  if (run.strict.count) describe(&run.strict);
+  CHECKF(!run.leaked, "%s", "the undelivered batch leaked");
+  /* Released by the stream's own release, not left for the harness: a
+     producer's stream owns what it has not yet delivered. */
+  CHECKF(run.harness_releases == 0, "%d harness release(s)",
+         run.harness_releases);
+  abi_case_free(c);
+}
+
+static void test_a_stream_the_consumer_keeps_is_named(void) {
+  AbiCase       *c = with_ops(abi_fixture_smoke(), STREAMED, 5);
+  StreamConsumer sc;
+  StreamRun      run;
+  uint32_t       i;
+  int            stream_named = 0;
+
+  g_test = "stream kept";
+  memset(&sc, 0, sizeof(sc));
+  sc.never_release = 1;
+  run_stream(c, &sc, &run);
+  for (i = 0; i < run.strict.count && i < ABI_LC_MAX_FINDINGS; i++) {
+    stream_named |=
+        run.strict.findings[i].rule == ABI_LC_NOT_RELEASED_BY_CONSUMER &&
+        run.strict.findings[i].object == ABI_LC_STREAM;
+  }
+  CHECKF(stream_named, "%u finding(s), none for the stream", run.strict.count);
+  /* The schema and batch it kept are in its own storage, which only it can
+     release: a stream consumer that never releases really does leak. */
+  CHECKF(run.leaked, "%s", "a kept schema and batch should read as a leak");
+  abi_case_free(c);
+}
+
+static void test_eof_expected_too_soon_is_invalid(void) {
+  static const AbiOp ops[] = {OP(ABI_OP_STREAM_GET_SCHEMA),
+                              OP(ABI_OP_STREAM_GET_NEXT), OP(ABI_OP_EXPECT_EOF),
+                              OP(ABI_OP_RELEASE_BASE)};
+  AbiCase           *c = with_ops(abi_fixture_smoke(), ops, 4);
+  StreamConsumer     sc;
+  StreamRun          run;
+
+  g_test = "EOF too soon";
+  memset(&sc, 0, sizeof(sc));
+  run_stream(c, &sc, &run);
+  CHECKF(run.result.outcome == ABI_CALLSEQ_INVALID &&
+             strstr(run.result.detail, "EOF") != NULL,
+         "%s %s", abi_callseq_outcome_str(run.result.outcome),
+         run.result.detail);
+  CHECKF(!run.leaked, "%s", "leaked");
+  abi_case_free(c);
+}
+
+static void test_array_ops_in_a_stream_case_are_invalid(void) {
+  static const AbiOp ops[] = {OP(ABI_OP_STREAM_GET_SCHEMA),
+                              OP(ABI_OP_IMPORT_ARRAY), OP(ABI_OP_RELEASE_BASE)};
+  AbiCase           *c = with_ops(abi_fixture_smoke(), ops, 3);
+  StreamConsumer     sc;
+  StreamRun          run;
+
+  g_test = "array op in a stream";
+  memset(&sc, 0, sizeof(sc));
+  run_stream(c, &sc, &run);
+  CHECKF(run.result.outcome == ABI_CALLSEQ_INVALID &&
+             strstr(run.result.detail, "hands over a stream") != NULL,
+         "%s %s", abi_callseq_outcome_str(run.result.outcome),
+         run.result.detail);
+  CHECKF(!run.leaked, "%s", "leaked");
+  abi_case_free(c);
+}
+
 int main(void) {
+  test_a_stream_delivers_one_batch_then_eof();
+  test_a_schema_only_stream_answers_eof_at_once();
+  test_an_early_release_lets_the_stream_free_its_batch();
+  test_a_stream_the_consumer_keeps_is_named();
+  test_eof_expected_too_soon_is_invalid();
+  test_array_ops_in_a_stream_case_are_invalid();
   test_default_path_is_clean();
   test_a_move_transfers_ownership_without_a_release();
   test_a_consumer_that_never_releases_is_named();

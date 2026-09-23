@@ -75,6 +75,26 @@ def matches(want: Any, got: Any) -> bool:
     return bool(got == want)
 
 
+# Lifecycles that deliver a schema and no array.
+DATA_FREE = ("early-release", "EOF")
+ARROW_TYPES = {
+    "int32": "int32",
+    "int64": "int64",
+    "float64": "double",
+    "utf8": "string",
+    "bool": "bool",
+}
+
+
+def check_schema_only(schema: Any, kind: str) -> str | None:
+    """A schema-only case: one field `f0` of the model's type."""
+    if schema.names != ["f0"]:
+        return f"fields {schema.names}, model says ['f0']"
+    if str(schema.field(0).type) != ARROW_TYPES[kind]:
+        return f"type {schema.field(0).type}, model says {ARROW_TYPES[kind]}"
+    return None
+
+
 def check_case(batch: Any, kind: str, length: int, pattern: str) -> str | None:
     """The first disagreement between this batch and the model, or None."""
     if batch.num_rows != length:
@@ -111,9 +131,16 @@ def main() -> int:
 
     rejected: list[str] = []
     disagreed: list[str] = []
-    for case_id, _size, kind, length_class, _offset, pattern, _buffers, _align, _life in rows:
+    for case_id, _size, kind, length_class, _offset, pattern, _buffers, _align, life in rows:
         case = _abicase.load(str(MANIFEST.parent / f"{case_id}.abicase"))
         try:
+            if life in DATA_FREE:
+                # A schema and no array (coverage-matrix 1.7): the schema is all
+                # there is to read back, so it is what gets compared.
+                problem = check_schema_only(pyarrow.schema(case), kind)
+                if problem:
+                    disagreed.append(f"{case_id} [{kind} {life}]: {problem}")
+                continue
             try:
                 batch = pyarrow.record_batch(case)
             except BaseException as exc:  # noqa: BLE001

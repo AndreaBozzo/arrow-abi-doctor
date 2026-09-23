@@ -17,6 +17,8 @@
  *    the 5 pointer slots it asked for, so the slot count lives in private_data
  *    rather than being re-derived from the struct the consumer can see.
  */
+#include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -61,6 +63,16 @@ struct AbiReconstruction {
    */
   int harness_releasing;
 
+  /*
+   * Stream mode (abi_reconstruct_stream). The case is kept, decoded from its
+   * own encoding, because get_schema() builds a fresh schema on every call and
+   * the reconstruction copies nothing of the schema tree otherwise.
+   */
+  int                     stream_mode;
+  struct ArrowArrayStream stream;
+  AbiCase                *stream_case;
+  char                    last_error[128];
+
   AbiObserver obs;
 };
 
@@ -81,6 +93,13 @@ const char *abi_event_kind_str(AbiEventKind kind) {
   case ABI_EV_ARRAY_IMPORTED: return "ARRAY_IMPORTED";
   case ABI_EV_SCHEMA_RETURNED: return "SCHEMA_RETURNED";
   case ABI_EV_ARRAY_RETURNED: return "ARRAY_RETURNED";
+  case ABI_EV_STREAM_EXPORTED: return "STREAM_EXPORTED";
+  case ABI_EV_STREAM_MOVED: return "STREAM_MOVED";
+  case ABI_EV_STREAM_IMPORTED: return "STREAM_IMPORTED";
+  case ABI_EV_STREAM_RETURNED: return "STREAM_RETURNED";
+  case ABI_EV_STREAM_RELEASE_ENTER: return "STREAM_RELEASE_ENTER";
+  case ABI_EV_STREAM_RELEASE_EXIT: return "STREAM_RELEASE_EXIT";
+  case ABI_EV_STREAM_EOF: return "STREAM_EOF";
   case ABI_EV__MAX: break;
   }
   return "?";
@@ -508,8 +527,8 @@ static int build_array(AbiReconstruction *r, const AbiArrayNode *n,
   return 1;
 }
 
-AbiStatus abi_reconstruct(const AbiCase *c, AbiReconstruction **out,
-                          AbiError *err) {
+static AbiStatus reconstruct(const AbiCase *c, AbiReconstruction **out,
+                             AbiError *err, int stream_mode) {
   AbiReconstruction *r;
   uint32_t           i;
 
@@ -550,11 +569,14 @@ AbiStatus abi_reconstruct(const AbiCase *c, AbiReconstruction **out,
     }
   }
 
-  if (!build_schema(r, c->schema, &r->schema, "/", 1)) {
-    abi_reconstruction_free(r);
-    return ABI_ERR_NO_MEMORY;
+  /* A stream exports its schemas on demand, from get_schema(). */
+  if (!stream_mode) {
+    if (!build_schema(r, c->schema, &r->schema, "/", 1)) {
+      abi_reconstruction_free(r);
+      return ABI_ERR_NO_MEMORY;
+    }
+    obs_event(r, ABI_EV_SCHEMA_EXPORTED, "/", 0, &r->schema);
   }
-  obs_event(r, ABI_EV_SCHEMA_EXPORTED, "/", 0, &r->schema);
 
   if (c->array) {
     if (!build_array(r, c->array, &r->array, "/", 1)) {
@@ -567,6 +589,138 @@ AbiStatus abi_reconstruct(const AbiCase *c, AbiReconstruction **out,
 
   *out = r;
   return ABI_OK;
+}
+
+AbiStatus abi_reconstruct(const AbiCase *c, AbiReconstruction **out,
+                          AbiError *err) {
+  return reconstruct(c, out, err, 0);
+}
+
+/* --- the stream ------------------------------------------------------------
+ */
+
+static int stream_get_schema(struct ArrowArrayStream *s,
+                             struct ArrowSchema      *out) {
+  AbiReconstruction *r = (AbiReconstruction *)s->private_data;
+
+  if (!build_schema(r, r->stream_case->schema, out, "/", 1)) {
+    snprintf(r->last_error, sizeof(r->last_error), "out of memory");
+    return ENOMEM;
+  }
+  /* Built at the consumer's `out` and handed over by returning. */
+  obs_event(r, ABI_EV_SCHEMA_EXPORTED, "/", 0, out);
+  obs_event(r, ABI_EV_SCHEMA_IMPORTED, "/", 0, out);
+  return 0;
+}
+
+static int stream_get_next(struct ArrowArrayStream *s, struct ArrowArray *out) {
+  AbiReconstruction *r = (AbiReconstruction *)s->private_data;
+
+  if (r->has_array && r->array.release) {
+    /* The one batch, moved to the consumer's `out` and handed over. */
+    memcpy(out, &r->array, sizeof(*out));
+    r->array.release = NULL;
+    obs_event(r, ABI_EV_ARRAY_MOVED, "/", 0, out);
+    obs_event(r, ABI_EV_ARRAY_IMPORTED, "/", 0, out);
+    return 0;
+  }
+  /* End of stream: a released array, per the C Stream Interface. */
+  memset(out, 0, sizeof(*out));
+  obs_event(r, ABI_EV_STREAM_EOF, "/", 0, out);
+  return 0;
+}
+
+static const char *stream_get_last_error(struct ArrowArrayStream *s) {
+  AbiReconstruction *r = (AbiReconstruction *)s->private_data;
+  return r->last_error[0] ? r->last_error : NULL;
+}
+
+/*
+ * Releases what the stream still owns -- a batch it never handed over -- as a
+ * producer's stream does, nested inside its own release. The kept case stays
+ * with the reconstruction, which frees it: the event log outlives the stream.
+ */
+static void stream_release(struct ArrowArrayStream *s) {
+  AbiReconstruction *r = (AbiReconstruction *)s->private_data;
+  uint8_t            by_consumer =
+      (r->obs.release_depth == 0 && !r->harness_releasing) ? 1u : 0u;
+
+  obs_event(r, ABI_EV_STREAM_RELEASE_ENTER, "/", by_consumer, s);
+  r->obs.release_depth++;
+  if (r->has_array && r->array.release) r->array.release(&r->array);
+  r->obs.release_depth--;
+  obs_event(r, ABI_EV_STREAM_RELEASE_EXIT, "/", by_consumer, s);
+  s->get_schema = NULL;
+  s->get_next = NULL;
+  s->get_last_error = NULL;
+  s->private_data = NULL;
+  s->release = NULL;
+}
+
+AbiStatus abi_reconstruct_stream(const AbiCase *c, AbiReconstruction **out,
+                                 AbiError *err) {
+  AbiReconstruction *r = NULL;
+  AbiStatus          st;
+  uint8_t           *bytes = NULL;
+  size_t             size = 0;
+
+  if (!c || !out) return ABI_ERR_INVALID_ARGUMENT;
+  st = reconstruct(c, &r, err, 1);
+  if (st != ABI_OK) return st;
+
+  /* The case, kept by decoding its own canonical encoding: a deep copy. */
+  st = abi_case_encode(c, &bytes, &size);
+  if (st == ABI_OK) st = abi_case_decode(bytes, size, &r->stream_case, err);
+  abi_free(bytes);
+  if (st != ABI_OK) {
+    abi_reconstruction_free(r);
+    return st;
+  }
+
+  r->stream_mode = 1;
+  r->stream.get_schema = stream_get_schema;
+  r->stream.get_next = stream_get_next;
+  r->stream.get_last_error = stream_get_last_error;
+  r->stream.release = stream_release;
+  r->stream.private_data = r;
+  obs_event(r, ABI_EV_STREAM_EXPORTED, "/", 0, &r->stream);
+  *out = r;
+  return ABI_OK;
+}
+
+struct ArrowArrayStream *abi_reconstruction_stream(AbiReconstruction *r) {
+  return (r && r->stream_mode) ? &r->stream : NULL;
+}
+
+AbiStatus abi_reconstruction_move_stream(AbiReconstruction       *r,
+                                         struct ArrowArrayStream *dst,
+                                         struct ArrowArrayStream *src) {
+  if (!r || !dst || !src || !src->release || dst == src) {
+    return ABI_ERR_INVALID_ARGUMENT;
+  }
+  memcpy(dst, src, sizeof(*dst));
+  src->release = NULL;
+  obs_event(r, ABI_EV_STREAM_MOVED, "/", 0, dst);
+  return ABI_OK;
+}
+
+void abi_reconstruction_note_stream_import(
+    AbiReconstruction *r, const struct ArrowArrayStream *addr) {
+  if (r) obs_event(r, ABI_EV_STREAM_IMPORTED, "/", 0, addr);
+}
+
+void abi_reconstruction_note_stream_returned(
+    AbiReconstruction *r, const struct ArrowArrayStream *addr) {
+  if (r) obs_event(r, ABI_EV_STREAM_RETURNED, "/", 0, addr);
+}
+
+void abi_reconstruction_harness_release_stream(AbiReconstruction       *r,
+                                               struct ArrowArrayStream *s) {
+  if (!r || !s || !s->release) return;
+  obs_event(r, ABI_EV_HARNESS_RELEASED, "/", 0, s);
+  r->harness_releasing = 1;
+  s->release(s);
+  r->harness_releasing = 0;
 }
 
 struct ArrowSchema *abi_reconstruction_schema(AbiReconstruction *r) {
@@ -660,6 +814,8 @@ void abi_reconstruction_release_all(AbiReconstruction *r) {
    * live in the reconstruction, so a harness that wants to report on the
    * cleanup has to be able to release first and read afterwards.
    */
+  /* The stream first: releasing it releases a batch it still owns. */
+  if (r->stream_mode) abi_reconstruction_harness_release_stream(r, &r->stream);
   abi_reconstruction_harness_release_schema(r, &r->schema);
   if (r->has_array) abi_reconstruction_harness_release_array(r, &r->array);
   free_backing_allocations(r);
@@ -668,6 +824,7 @@ void abi_reconstruction_release_all(AbiReconstruction *r) {
 void abi_reconstruction_free(AbiReconstruction *r) {
   if (!r) return;
   abi_reconstruction_release_all(r);
+  abi_case_free(r->stream_case);
   free(r);
 }
 

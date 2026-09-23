@@ -30,6 +30,10 @@
 typedef struct {
   struct ArrowSchema *schema;
   struct ArrowArray  *array;
+  /* A stream, and what it has handed over, in storage of the consumer's. */
+  struct ArrowArrayStream *stream;
+  struct ArrowSchema       stream_schema;
+  struct ArrowArray        stream_batch;
 #if defined(ABI_ENABLE_USE_AFTER_RELEASE)
   const void *first_buffer; /* kept past its lifetime, on purpose */
 #endif
@@ -83,6 +87,51 @@ static void null_release_base(void *ctx) {
   NullConsumer *nc = (NullConsumer *)ctx;
   if (nc->array && nc->array->release) nc->array->release(nc->array);
   if (nc->schema && nc->schema->release) nc->schema->release(nc->schema);
+  if (nc->stream_batch.release) nc->stream_batch.release(&nc->stream_batch);
+  if (nc->stream_schema.release) nc->stream_schema.release(&nc->stream_schema);
+  if (nc->stream && nc->stream->release) nc->stream->release(nc->stream);
+}
+
+/* --- the C Stream Interface ------------------------------------------------
+ */
+
+static int null_import_stream(void *ctx, struct ArrowArrayStream *s, char *why,
+                              size_t n) {
+  (void)why;
+  (void)n;
+  ((NullConsumer *)ctx)->stream = s;
+  return 0;
+}
+
+static int null_stream_get_schema(void *ctx, char *why, size_t n) {
+  NullConsumer *nc = (NullConsumer *)ctx;
+  int           rc;
+  /* A second call replaces the schema this consumer held. */
+  if (nc->stream_schema.release) nc->stream_schema.release(&nc->stream_schema);
+  rc = nc->stream->get_schema(nc->stream, &nc->stream_schema);
+  if (rc) snprintf(why, n, "get_schema returned %d", rc);
+  return rc;
+}
+
+static int null_stream_get_next(void *ctx, int *eof, char *why, size_t n) {
+  NullConsumer *nc = (NullConsumer *)ctx;
+  int           rc;
+  /* Done with the previous batch, it lets it go before asking for the next. */
+  if (nc->stream_batch.release) nc->stream_batch.release(&nc->stream_batch);
+  rc = nc->stream->get_next(nc->stream, &nc->stream_batch);
+  if (rc) {
+    snprintf(why, n, "get_next returned %d", rc);
+    return rc;
+  }
+  *eof = nc->stream_batch.release == NULL;
+  return 0;
+}
+
+static int null_stream_get_last_error(void *ctx, char *why, size_t n) {
+  NullConsumer *nc = (NullConsumer *)ctx;
+  const char   *msg = nc->stream->get_last_error(nc->stream);
+  snprintf(why, n, "get_last_error: %s", msg ? msg : "(none)");
+  return 0;
 }
 
 static void null_release_child(void *ctx, uint32_t i) {
@@ -133,6 +182,10 @@ int main(int argc, char **argv) {
     consumer.release_base = null_release_base;
     consumer.release_child = null_release_child;
     consumer.release_dictionary = null_release_dictionary;
+    consumer.import_stream = null_import_stream;
+    consumer.stream_get_schema = null_stream_get_schema;
+    consumer.stream_get_next = null_stream_get_next;
+    consumer.stream_get_last_error = null_stream_get_last_error;
 #if defined(ABI_ENABLE_USE_AFTER_RELEASE)
     consumer.use_after_release = null_use_after_release;
 #endif

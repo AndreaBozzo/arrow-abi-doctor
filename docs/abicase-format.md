@@ -437,6 +437,13 @@ never replaced by the default path. `USE_AFTER_RELEASE` is performed only in a
 build configured with `-DABI_ENABLE_USE_AFTER_RELEASE=ON`, since it is undefined
 behaviour in the worker's own process.
 
+A case whose CALLSEQ uses a stream op is reconstructed as an `ArrowArrayStream`
+(`abi_reconstruct_stream`): `get_schema` builds a fresh schema per call,
+`get_next` hands over the case's array once and then answers EOF, and a
+schema-only case answers EOF at once. The format carries no batch list, so a
+stream holds at most the case's one array; several batches and mid-stream
+errors are #19, a format change.
+
 | Code | Op | `arg0` | `arg1` |
 |---|---|---|---|
 | 0 | `NOP` | — | — |

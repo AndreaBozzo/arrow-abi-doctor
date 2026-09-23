@@ -8,7 +8,7 @@ The lifecycle state machine is `libabi/src/lifecycle.c` and the CALLSEQ
 executor that produces the paths it judges is `libabi/src/callseq.c` (issue
 #5). This directory keeps the reasoning.
 
-Each base structure — the schema and the array — is walked through
+Each base structure — the schema, the array, the stream — is walked through
 
     EXPORTED --move--> EXPORTED --import--> IMPORTED --release--> RELEASED
 

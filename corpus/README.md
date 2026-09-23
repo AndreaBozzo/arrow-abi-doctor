@@ -49,12 +49,21 @@ so a tuple stamped into the case would make every id unique by construction and
 the uniqueness check meaningless. A duplicate id means two cells of the model
 built the same case, which is a finding about the model (coverage-matrix §8).
 
-Two lifecycles are constructible today, `direct` and `moved` — 3760 of
-N = 5650. A `moved` case is the `direct` array with `MOVE_STRUCT` ahead of the
-handoff in its CALLSEQ, which the executor performs and the lifecycle state
-machine checks. The three stream lifecycles wait on the C Stream Interface
-(#4); the generator counts what it skipped rather than passing over it
-silently.
+All five lifecycles are constructible — every one of the N = 5650 cells. They
+differ in the case's CALLSEQ, which the executor runs and the lifecycle state
+machine judges:
+
+| Lifecycle | Case | CALLSEQ |
+|---|---|---|
+| `direct` | the array | import schema, import array, release |
+| `moved` | the array | `MOVE_STRUCT` first, then as `direct` |
+| `streamed` | the array | stream: schema, the one batch, EOF, release |
+| `EOF` | schema only | stream: schema, EOF at once, release |
+| `early-release` | schema only | stream: schema, released without `get_next` |
+
+The stream lifecycles need no batch list in the format: the frozen model's
+streams carry at most the case's own array. Multi-batch streams and mid-stream
+errors do, and are #19.
 
 `b1/`, `b2/` and `c/` are enumerated defects rather than a product of
 equivalence classes, so they are hand-written and committed, and they are not

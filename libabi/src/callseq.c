@@ -51,7 +51,26 @@ typedef struct {
   struct ArrowArray  *moved_array;
   int                 schema_imported;
   int                 array_imported;
+  /* Stream mode: the stream, and what the last get_next() answered. */
+  struct ArrowArrayStream *stream;
+  int                      stream_imported;
+  int                      got_next;
+  int                      last_eof;
 } Exec;
+
+int abi_case_is_stream(const AbiCase *c) {
+  uint32_t i;
+  for (i = 0; c && i < c->op_count; i++) {
+    switch ((AbiOpCode)c->ops[i].code) {
+    case ABI_OP_STREAM_GET_SCHEMA:
+    case ABI_OP_STREAM_GET_NEXT:
+    case ABI_OP_STREAM_GET_LAST_ERROR:
+    case ABI_OP_EXPECT_EOF: return 1;
+    default: break;
+    }
+  }
+  return 0;
+}
 
 static AbiCallseqOutcome stop(Exec *x, AbiCallseqOutcome outcome,
                               const char *what, AbiOpCode code) {
@@ -190,9 +209,89 @@ static AbiCallseqOutcome op_misuse(Exec *x, const AbiOp *op) {
   return ABI_CALLSEQ_ACCEPTED;
 }
 
+/* The handoff of a stream: the first stream op performs it. */
+static AbiCallseqOutcome stream_handoff(Exec *x, AbiOpCode code) {
+  const AbiConsumer *c = x->consumer;
+  char               why[192];
+  int                refused;
+
+  if (x->stream_imported) return ABI_CALLSEQ_ACCEPTED;
+  if (!c->import_stream) {
+    return stop(x, ABI_CALLSEQ_UNSUPPORTED,
+                "this consumer does not take a stream", code);
+  }
+  why[0] = 0;
+  abi_reconstruction_note_stream_import(x->r, x->stream);
+  refused = c->import_stream(c->ctx, x->stream, why, sizeof(why));
+  if (!refused) {
+    x->stream_imported = 1;
+    return ABI_CALLSEQ_ACCEPTED;
+  }
+  if (x->stream->release) {
+    abi_reconstruction_note_stream_returned(x->r, x->stream);
+  }
+  return stop(x, ABI_CALLSEQ_REJECTED, why[0] ? why : "refused", code);
+}
+
+static AbiCallseqOutcome op_stream(Exec *x, AbiOpCode code) {
+  const AbiConsumer *c = x->consumer;
+  AbiCallseqOutcome  o;
+  char               why[192];
+  int                refused = 0, eof = 0;
+
+  if (!x->stream) {
+    return stop(x, ABI_CALLSEQ_UNSUPPORTED,
+                "not reconstructed as a stream (abi_reconstruct_stream)", code);
+  }
+  if (code == ABI_OP_EXPECT_EOF) {
+    if (!x->got_next || !x->last_eof) {
+      return stop(x, ABI_CALLSEQ_INVALID,
+                  "the stream had not answered EOF -- the harness's producer "
+                  "delivered more than the case holds",
+                  code);
+    }
+    return ABI_CALLSEQ_ACCEPTED;
+  }
+  o = stream_handoff(x, code);
+  if (o != ABI_CALLSEQ_ACCEPTED) return o;
+
+  why[0] = 0;
+  switch (code) {
+  case ABI_OP_STREAM_GET_SCHEMA:
+    if (!c->stream_get_schema) break;
+    refused = c->stream_get_schema(c->ctx, why, sizeof(why));
+    goto answered;
+  case ABI_OP_STREAM_GET_NEXT:
+    if (!c->stream_get_next) break;
+    refused = c->stream_get_next(c->ctx, &eof, why, sizeof(why));
+    x->got_next = 1;
+    x->last_eof = eof;
+    goto answered;
+  case ABI_OP_STREAM_GET_LAST_ERROR:
+    if (!c->stream_get_last_error) break;
+    refused = c->stream_get_last_error(c->ctx, why, sizeof(why));
+    goto answered;
+  default: break;
+  }
+  return stop(x, ABI_CALLSEQ_UNSUPPORTED, "not performed by this consumer",
+              code);
+
+answered:
+  if (refused)
+    return stop(x, ABI_CALLSEQ_REJECTED, why[0] ? why : "refused", code);
+  if (why[0]) snprintf(x->out->detail, sizeof(x->out->detail), "%s", why);
+  return ABI_CALLSEQ_ACCEPTED;
+}
+
 static AbiCallseqOutcome run_op(Exec *x, const AbiOp *op) {
   AbiOpCode code = (AbiOpCode)op->code;
 
+  if (x->stream &&
+      (code == ABI_OP_IMPORT_SCHEMA || code == ABI_OP_IMPORT_ARRAY ||
+       code == ABI_OP_MOVE_STRUCT)) {
+    return stop(x, ABI_CALLSEQ_INVALID,
+                "a stream case hands over a stream, not its parts", code);
+  }
   switch (code) {
   case ABI_OP_NOP: return ABI_CALLSEQ_ACCEPTED;
   case ABI_OP_MOVE_STRUCT: return op_move(x);
@@ -203,7 +302,7 @@ static AbiCallseqOutcome run_op(Exec *x, const AbiOp *op) {
       return stop(x, ABI_CALLSEQ_UNSUPPORTED, "not performed by this consumer",
                   code);
     }
-    if (!x->schema_imported && !x->array_imported) {
+    if (!x->schema_imported && !x->array_imported && !x->stream_imported) {
       return stop(x, ABI_CALLSEQ_INVALID, "nothing was handed over", code);
     }
     x->consumer->release_base(x->consumer->ctx);
@@ -214,10 +313,7 @@ static AbiCallseqOutcome run_op(Exec *x, const AbiOp *op) {
   case ABI_OP_STREAM_GET_SCHEMA:
   case ABI_OP_STREAM_GET_NEXT:
   case ABI_OP_STREAM_GET_LAST_ERROR:
-  case ABI_OP_EXPECT_EOF:
-    return stop(x, ABI_CALLSEQ_UNSUPPORTED,
-                "the C Stream Interface is not reconstructed yet (issue #4)",
-                code);
+  case ABI_OP_EXPECT_EOF: return op_stream(x, code);
   }
   return stop(x, ABI_CALLSEQ_INVALID, "unknown op", code);
 }
@@ -239,6 +335,7 @@ void abi_callseq_run(AbiReconstruction *r, const AbiCase *c,
   x.out = out;
   x.schema = abi_reconstruction_schema(r);
   x.array = abi_reconstruction_array(r);
+  x.stream = abi_reconstruction_stream(r);
 
   if (c->op_count) {
     ops = c->ops;
@@ -271,15 +368,16 @@ void abi_callseq_run(AbiReconstruction *r, const AbiCase *c,
   }
 
   /*
-   * A refusal ends the case, and a consumer that fails an import lets go of
-   * what it had already taken -- the schema, when it is the array it refused.
-   * Stopping the sequence without that would leave the harness releasing the
-   * consumer's schema and the state machine blaming the consumer for a release
-   * the harness never let it make. Not traced as an op: the sequence did not
-   * ask for it, the refusal did.
+   * A sequence that stops early -- a refusal, or one the harness cannot run as
+   * written -- ends the case, and the consumer lets go of what it had already
+   * taken: the schema, when it is the array it refused. Without that, the
+   * harness would release the consumer's schema and the state machine would
+   * blame the consumer for a release it was never let make. A stream consumer
+   * holds its schemas and batches in storage of its own, which only it can
+   * release. Not traced as an op: the sequence did not ask for it.
    */
-  if (out->outcome == ABI_CALLSEQ_REJECTED && consumer->release_base &&
-      (x.schema_imported || x.array_imported)) {
+  if (out->outcome != ABI_CALLSEQ_ACCEPTED && consumer->release_base &&
+      (x.schema_imported || x.array_imported || x.stream_imported)) {
     consumer->release_base(consumer->ctx);
   }
 
@@ -289,6 +387,8 @@ void abi_callseq_run(AbiReconstruction *r, const AbiCase *c,
    * stopped early or never released them. The state machine decides which of
    * those was the consumer's failing and which was simply the harness's job.
    */
+  /* The stream first: releasing it releases a batch it still owns. */
+  abi_reconstruction_harness_release_stream(r, x.stream);
   abi_reconstruction_harness_release_array(r, x.array);
   abi_reconstruction_harness_release_schema(r, x.schema);
   free(x.moved_schema);

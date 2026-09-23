@@ -81,6 +81,26 @@ def test_full_clean_run_is_claimable() -> None:
     assert report["consumers"]["w"]["states"]["agree"] == len(CELLS)
 
 
+def test_the_claim_is_per_consumer() -> None:
+    # One consumer runs the whole model, another stops early: the first can make
+    # the claim, the second cannot, and the run as a whole cannot either.
+    complete = worker([line(k) for k in FULL], name="whole")
+    partial = worker([line(k) for k in list(FULL)[:10]], name="part")
+    report = diff_report.build(CELLS, FULL, [complete, partial], [])
+    mine = report["claim"]["per_consumer"]
+    assert mine["whole"]["claimable"] and mine["whole"]["disagree"] == 0, mine["whole"]
+    assert not mine["part"]["claimable"] and mine["part"]["text"] is None, mine["part"]
+    assert not report["claim"]["claimable"]
+
+
+def test_a_test_instrument_never_claims() -> None:
+    faulty = worker([line(k) for k in FULL], name="planted")
+    faulty["header"] = {"worker_protocol": 1, "consumer": "faulty"}
+    report = diff_report.build(CELLS, FULL, [faulty], [])
+    mine = report["claim"]["per_consumer"]["planted"]
+    assert mine["instrument"] and not mine["claimable"] and mine["text"] is None, mine
+
+
 def test_inexpressible_cells_block_the_claim() -> None:
     report = run(DIRECT, [line(k) for k in DIRECT])
     states = report["consumers"]["w"]["states"]

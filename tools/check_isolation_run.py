@@ -129,9 +129,16 @@ def check_sent_only(report: dict[str, Any], worker: str) -> list[str]:
             problems.append(f"{where}: no versioned digest object")
             continue
         sent = digest.get("sent")
-        if not isinstance(sent, dict) or not all(
-            isinstance(sent.get(k), str) and len(sent[k]) == DIGEST_HEX_LEN
-            for k in ("physical", "logical")
+        # A schema-only case (the EOF and early-release lifecycles) has no data
+        # to digest, and says so with exactly this reason; nothing else excuses
+        # a missing `sent`.
+        schema_only = sent is None and digest.get("sent_error") == "no array to digest"
+        if not schema_only and (
+            not isinstance(sent, dict)
+            or not all(
+                isinstance(sent.get(k), str) and len(sent[k]) == DIGEST_HEX_LEN
+                for k in ("physical", "logical")
+            )
         ):
             problems.append(f"{where}: `sent` is not two 32-hex digests: {digest}")
         if "received" in digest or "received_error" in digest:

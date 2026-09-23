@@ -382,6 +382,13 @@ static int digest_one(const char *path) {
   abi_case_free(c);
   if (st != ABI_OK) return fail(path, st, &err);
 
+  /* Both digests are of data, and a schema-only case has none. */
+  if (!abi_reconstruction_array(r)) {
+    fprintf(stderr, "error: %s: a schema-only case has no array to digest\n",
+            path);
+    abi_reconstruction_free(r);
+    return 1;
+  }
   st = abi_digest(abi_reconstruction_schema(r), abi_reconstruction_array(r), &d,
                   &err);
   if (st != ABI_OK) {

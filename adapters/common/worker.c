@@ -401,7 +401,7 @@ static void put_lifecycle(FILE *out, const AbiLifecycleVerdict *v, int strict) {
     const AbiLifecycleFinding *f = &v->findings[i];
     snprintf(item, sizeof(item), "%s %s %s",
              abi_lifecycle_rule_str((AbiLifecycleRule)f->rule),
-             f->is_array ? "array" : "schema", f->path);
+             abi_lifecycle_object_str((AbiLifecycleObject)f->object), f->path);
     if (i) fputc(',', out);
     put_str(out, item);
   }
@@ -452,7 +452,8 @@ void abi_worker_run_case(AbiWorker *w, const char *case_path,
     return;
   }
   abi_case_id(c, id);
-  st = abi_reconstruct(c, &r, &err);
+  st = abi_case_is_stream(c) ? abi_reconstruct_stream(c, &r, &err)
+                             : abi_reconstruct(c, &r, &err);
   if (st != ABI_OK) {
     snprintf(detail, sizeof(detail), "%s: %s", abi_status_str(st), err.message);
     abi_worker_result(w, case_path, id, "error", detail, NULL);
@@ -467,7 +468,22 @@ void abi_worker_run_case(AbiWorker *w, const char *case_path,
    * the length needs) it would be the harness reading out of bounds, and the
    * fault would be ours rather than the consumer's under test.
    */
-  if (c->cls == ABI_CLASS_A || c->cls == ABI_CLASS_B2) {
+  if ((c->cls == ABI_CLASS_A || c->cls == ABI_CLASS_B2) &&
+      abi_reconstruction_stream(r)) {
+    /*
+     * A stream exports its schema only on demand, and asking for one here
+     * would put the harness's own get_schema() into the log being judged.
+     * The data is the case's either way, so the digest is taken from a
+     * throwaway reconstruction of the same case, and the judged log is left
+     * alone.
+     */
+    AbiReconstruction *d = NULL;
+    if (abi_reconstruct(c, &d, NULL) == ABI_OK) {
+      abi_worker_digest_sent(digest_out, abi_reconstruction_schema(d),
+                             abi_reconstruction_array(d));
+    }
+    abi_reconstruction_free(d);
+  } else if (c->cls == ABI_CLASS_A || c->cls == ABI_CLASS_B2) {
     abi_worker_digest_sent(digest_out, abi_reconstruction_schema(r),
                            abi_reconstruction_array(r));
   } else {

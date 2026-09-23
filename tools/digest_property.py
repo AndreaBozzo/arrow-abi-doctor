@@ -51,6 +51,10 @@ def find_cli(explicit: str | None) -> Path:
     raise SystemExit(f"no abicase binary beside {generator}")
 
 
+# Lifecycles that deliver a schema and no array.
+DATA_FREE = ("early-release", "EOF")
+
+
 def read_tuples(manifest: Path) -> dict[str, Case]:
     cases: dict[str, Case] = {}
     for line in manifest.read_text(encoding="utf-8").splitlines():
@@ -123,7 +127,11 @@ def main() -> int:
     if not manifest.is_file():
         raise SystemExit(f"no corpus at {corpus}; run tools/gen_corpus.py first")
 
-    cases = read_tuples(manifest)
+    # The data-free lifecycles deliver a schema and no array (coverage-matrix
+    # 1.7): nothing to digest, and so outside a property about data. Excluded
+    # by name and counted, never by whether a digest happened to fail.
+    everything = read_tuples(manifest)
+    cases = {k: c for k, c in everything.items() if c.lifecycle not in DATA_FREE}
     paths = [corpus / f"{case_id}.abicase" for case_id in cases]
     digests = digest_all(find_cli(args.abicase), paths)
 
@@ -138,6 +146,10 @@ def main() -> int:
     print(
         f"ok  {len(digests)} cases digested; the logical digest partitions them into "
         f"exactly {len(groups)} groups, one per (type, length-class, null-pattern)"
+    )
+    print(
+        f"ok  {len(everything) - len(cases)} data-free cases ({', '.join(DATA_FREE)}) "
+        "carry no array and are outside the property"
     )
     print(
         f"ok  {len(physical)} distinct physical digests, fewer than the case count because "

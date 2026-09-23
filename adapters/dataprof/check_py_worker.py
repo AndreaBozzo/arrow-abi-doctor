@@ -33,6 +33,15 @@ import tempfile
 from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
+MANIFEST_ROWS = [
+    line.split("\t")
+    for line in (ROOT / "corpus" / "a" / "manifest.tsv").read_text(encoding="utf-8").splitlines()
+    if line and not line.startswith("#")
+]
+LIFECYCLE = {row[0]: row[8] for row in MANIFEST_ROWS}
+DATA_FREE = ("early-release", "EOF")
+STREAM_LIFECYCLES = ("streamed", *DATA_FREE)
+STREAM_CELLS = sum(life in STREAM_LIFECYCLES for life in LIFECYCLE.values())
 WORKER = "adapters/dataprof/abi_worker.py"
 # The fault runs: FAULT_CASES cases, the fault injected on the FAULT_AT-th.
 FAULT_CASES = 5
@@ -81,19 +90,36 @@ def check_pair(tmp: pathlib.Path) -> list[str]:
             problems.append(f"{name}: did not exit cleanly: {w['termination']}")
         if w["cases_reported"] != w["cases_assigned"] or w["not_run"]:
             problems.append(f"{name}: {w['cases_reported']}/{w['cases_assigned']} reported")
-        if w["errored"] or w["protocol_errors"]:
-            problems.append(f"{name}: {w['errored']} errors, protocol {w['protocol_errors']}")
+        if w["protocol_errors"]:
+            problems.append(f"{name}: protocol {w['protocol_errors']}")
         header, *rows = lines(w)
+        # dataprof takes no stream-only producer, so its worker refuses every
+        # stream sequence by name -- those, and nothing else, may be errors.
+        # pyarrow runs them all.
+        expected = STREAM_CELLS if name == "dataprof" else 0
+        refused = [r for r in rows if r["status"] == "error"]
+        if len(refused) != expected or any(
+            "not performed by the dataprof worker" not in r["detail"]
+            or LIFECYCLE[r["id"]] not in STREAM_LIFECYCLES
+            for r in refused
+        ):
+            problems.append(f"{name}: {len(refused)} errors, expected {expected} stream refusals")
         if header.get("sanitizers") != [] or "fault_injection" in header:
             problems.append(f"{name}: header misstates the run: {header}")
         for row in rows:
             digest = row.get("digest", {})
-            if "sent" not in digest:
+            data_free = LIFECYCLE[row["id"]] in DATA_FREE
+            if "sent" not in digest and not data_free:
                 problems.append(f"{name} {row['case']}: no sent digest")
             gave_back = "received" in digest or "received_error" in digest
             if name == "dataprof" and gave_back:
                 problems.append(f"dataprof {row['case']}: claims to hand back an array")
-            if name == "pyarrow" and row["status"] == "accepted" and "received" not in digest:
+            if (
+                name == "pyarrow"
+                and row["status"] == "accepted"
+                and not data_free
+                and "received" not in digest
+            ):
                 problems.append(f"pyarrow {row['case']}: accepted with no received digest")
         print(
             f"  {name:<9} {header.get('consumer_version')}: {w['accepted']} accepted, "
