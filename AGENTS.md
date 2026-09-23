@@ -67,6 +67,7 @@ python tools/gen_corpus.py                 # writes corpus/a/, also what CI runs
 ./build/tools/abicase digest <file>|-      # both digests; - reads paths on stdin
 python tools/digest_property.py            # the digest partition, over the corpus
 python tools/check_refval.py               # nanoarrow: corpus valid at full, B1 refused
+python tools/check_b1.py                   # corpus B1: reproducible, cited, judged
 cd adapters/dataprof && python check_corpus.py   # every slot vs. the model
 
 # worker isolation: the coordinator supervises one process per consumer

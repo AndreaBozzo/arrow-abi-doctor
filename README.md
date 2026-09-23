@@ -14,8 +14,9 @@ each consumer runs in its own supervised process, so a crash is a recorded
 result rather than the end of a run. pyarrow and dataprof — Arrow C++ and
 arrow-rs — run under it as the first differential pair, and every run reduces to
 the per-cell states the coverage model defines. nanoarrow's validator runs
-beside them as the reference voice. The stream interface, the native Arrow C++
-and DuckDB adapters and Corpus B1 are what M1 still owes.
+beside them as the reference voice, and Corpus B1 holds ten invalid producers,
+each resting on a clause quoted verbatim. The stream interface and the native
+Arrow C++ and DuckDB adapters are what M1 still owes.
 
 ---
 

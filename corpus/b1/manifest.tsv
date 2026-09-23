@@ -1,0 +1,11 @@
+# name	case_id	expected	validation_level	spec_clause
+validity-absent-with-nulls	bb820d80148e1374e927d909ff00bcf9	REJECT	minimal	cdi-null-buffers
+data-buffer-null	9482c379dae3129e26f8b76914a4e49d	REJECT	minimal	cdi-null-buffers
+children-fewer-than-declared	8753461b7139b022e9a8c52e8ac33a0a	REJECT	minimal	cdi-children
+null-count-disagrees	4448f588286c115737018c99b7ab80a1	REJECT	full	cdi-null-count
+offsets-decreasing	1c4f952bfd1c0214ac8c6ae4fd4ee9d5	REJECT	full	col-offsets-monotonic
+dictionary-index-out-of-range	5b635219f991e62bc00f78a12ee37932	REJECT	full	col-dictionary-indices
+data-buffer-too-small	b76a68baa9205b714fb0a56eed1c4ee2	UNSPECIFIED	none	cdi-buffer-size
+offsets-buffer-empty	984ce2295878554eb880ba50a960d4f5	UNSPECIFIED	none	col-offsets-length
+last-offset-beyond-values	39e1f02514aaacd7140b2a4416c67c03	UNSPECIFIED	none	cdi-buffer-size
+length-beyond-int32	501a94b08dbea5d9dd25508fef00adac	UNSPECIFIED	none	cdi-buffer-size

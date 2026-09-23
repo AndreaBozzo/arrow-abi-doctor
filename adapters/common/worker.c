@@ -460,9 +460,22 @@ void abi_worker_run_case(AbiWorker *w, const char *case_path,
     return;
   }
 
-  /* What is handed over, digested before the handoff. */
-  abi_worker_digest_sent(digest_out, abi_reconstruction_schema(r),
-                         abi_reconstruction_array(r));
+  /*
+   * What is handed over, digested before the handoff -- for well-formed cases
+   * only. The digest trusts the array's own length and pointers, exactly as a
+   * consumer does, so on a B1 case (a NULL data buffer, a buffer smaller than
+   * the length needs) it would be the harness reading out of bounds, and the
+   * fault would be ours rather than the consumer's under test.
+   */
+  if (c->cls == ABI_CLASS_A || c->cls == ABI_CLASS_B2) {
+    abi_worker_digest_sent(digest_out, abi_reconstruction_schema(r),
+                           abi_reconstruction_array(r));
+  } else {
+    snprintf(digest_out->sent_error, sizeof(digest_out->sent_error),
+             "not digested: class %s declares invalid buffers the digest would "
+             "read as valid",
+             c->cls == ABI_CLASS_B1 ? "B1" : "C");
+  }
   abi_callseq_run(r, c, consumer, &cs);
   /*
    * release_all() before judging: it releases whatever is still live at the

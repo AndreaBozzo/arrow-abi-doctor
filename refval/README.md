@@ -129,3 +129,22 @@ not a documented limitation.
 A fix would read the offsets with `memcpy` (what nanoarrow's own IPC reader and
 most Arrow implementations do for unaligned data), or declare and document that
 unaligned offsets are unsupported, which the specification permits.
+
+### nanoarrow's `full` validation does not compare `null_count` to the bitmap
+
+**Status: a divergence between validators, recorded; not a bug, not filed.**
+
+Corpus B1's `null-count-disagrees` is a four-row `int32` array whose bitmap
+marks two slots null and whose `null_count` says one. `cdi-null-count` makes
+the field "The number of null items in the array", so the case is invalid.
+nanoarrow accepts it at `full`; pyarrow's full validation refuses it with
+`null_count value (1) doesn't match actual number of nulls in array (2)`.
+
+nanoarrow never claimed otherwise: its `full` level is documented as "Validate
+all buffer sizes and all buffer content", and `null_count` is a field of the
+structure, not buffer content. So this is a difference in what two validators
+cover, not one of them breaking a promise. `tools/check_b1.py` pins it by name
+(`VALIDATOR_DIVERGENCES`), so a nanoarrow that starts checking fails the check
+and the entry comes out. Whether nanoarrow should check it is a question for
+its maintainers, not a defect report.
+

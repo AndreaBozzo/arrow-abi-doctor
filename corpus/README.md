@@ -59,3 +59,30 @@ silently.
 `b1/`, `b2/` and `c/` are enumerated defects rather than a product of
 equivalence classes, so they are hand-written and committed, and they are not
 counted in N.
+
+## `b1/`
+
+Ten producers invalid in structure or data, each written out in
+`tools/gen_b1.c` beside the clause it breaks, and each carrying that clause as
+its `spec_clause` -- an entry of `docs/spec-citations.md`, quoted verbatim.
+`manifest.tsv` lists them. Two kinds:
+
+- **`REJECT`, six cases** -- the defect is in something a consumer can see: a
+  NULL validity buffer with nulls, a NULL data buffer, fewer child pointers
+  than declared, a `null_count` the bitmap contradicts, decreasing offsets, a
+  dictionary index out of range. A validator at the declared level must refuse
+  them, and say why.
+- **`UNSPECIFIED`, four cases** -- a buffer smaller than the array needs. The C
+  Data Interface carries no buffer sizes, so no consumer can see it, and the
+  specification places the obligation on the producer alone. What a consumer
+  does with one is recorded, never judged.
+
+```sh
+cmake --build build --target abicase-gen-b1
+python tools/check_b1.py      # reproducible, canonical, cited, judged as declared
+```
+
+The committed files are what the generator writes; `check_b1.py` regenerates
+them and requires byte equality, so a case cannot drift from its definition.
+The harness itself digests none of them: a digest trusts the buffers it reads,
+and on these that read would be ours.
