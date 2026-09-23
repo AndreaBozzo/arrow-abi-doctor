@@ -439,6 +439,40 @@ static int cmd_digest(int argc, char **argv) {
   return rc;
 }
 
+/*
+ * Writes one of the shared fixtures as a case file, by name. selftest stays as
+ * it is: the cross-architecture check compares its exact output. This is for
+ * handing a fixture to a worker -- the refval check needs a case nanoarrow must
+ * refuse, and the B1 fixture is one.
+ */
+static int cmd_fixture(const char *name, const char *out_path) {
+  AbiCase  *c = NULL;
+  AbiStatus st;
+  char      id[ABICASE_ID_HEX_SIZE];
+
+  if (strcmp(name, "rich") == 0)
+    c = abi_fixture_rich();
+  else if (strcmp(name, "smoke") == 0)
+    c = abi_fixture_smoke();
+  else if (strcmp(name, "minimal") == 0)
+    c = abi_fixture_minimal();
+  else if (strcmp(name, "bad-dict-index") == 0)
+    c = abi_fixture_bad_dict_index();
+  else {
+    fprintf(stderr,
+            "unknown fixture %s: rich, smoke, minimal or bad-dict-index\n",
+            name);
+    return 2;
+  }
+  if (!c) return fail("fixture", ABI_ERR_NO_MEMORY, NULL);
+  st = abi_case_write_file(c, out_path);
+  if (st == ABI_OK) st = abi_case_id(c, id);
+  abi_case_free(c);
+  if (st != ABI_OK) return fail(out_path, st, NULL);
+  printf("%s  %s  %s\n", id, name, out_path);
+  return 0;
+}
+
 static int usage(void) {
   fprintf(stderr, "abicase " ABI_DOCTOR_VERSION "\n"
                   "\n"
@@ -450,7 +484,11 @@ static int usage(void) {
                   "  abicase id        <file>       canonical case id\n"
                   "  abicase digest    <file>|-     physical and logical "
                   "digests of the reconstruction\n"
-                  "  abicase selftest  [-o <file>]  emit the shared fixture\n");
+                  "  abicase selftest  [-o <file>]  emit the shared fixture\n"
+                  "  abicase fixture   <name> -o <file>\n"
+                  "                                 write a named fixture: "
+                  "rich, smoke,\n"
+                  "                                 minimal, bad-dict-index\n");
   return 2;
 }
 
@@ -462,6 +500,10 @@ int main(int argc, char **argv) {
   if (strcmp(argv[1], "id") == 0 && argc == 3) return cmd_id(argv[2]);
   if (strcmp(argv[1], "digest") == 0 && argc >= 3) {
     return cmd_digest(argc, argv);
+  }
+  if (strcmp(argv[1], "fixture") == 0 && argc == 5 &&
+      strcmp(argv[3], "-o") == 0) {
+    return cmd_fixture(argv[2], argv[4]);
   }
   if (strcmp(argv[1], "selftest") == 0) {
     if (argc == 2) return cmd_selftest(NULL);

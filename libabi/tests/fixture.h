@@ -23,10 +23,14 @@ AbiCase *abi_fixture_minimal(void);
 /*
  * A plainly valid struct<a: int32, b: utf8> with four rows and one null.
  *
- * Deliberately boring, and separate from the rich fixture: the rich one carries
- * dictionary indices that are out of range for its dictionary, which is fine
- * for exercising the format but wrong for a smoke test, where anything a
- * consumer rejects has to be our bug rather than the case's.
+ * Deliberately boring, and separate from the rich fixture, which exercises
+ * everything the format carries at once -- aliasing, misalignment, a
+ * dictionary, metadata with an embedded NUL. That is right for testing the
+ * format and wrong for a smoke test, where anything a consumer rejects has to
+ * be our bug rather than the case's. (This comment used to say the rich
+ * fixture's dictionary indices are out of range. They are not: its indices are
+ * 0 and 1 over a two-value dictionary, which nanoarrow and pyarrow both
+ * validate at full. The out-of-range case is abi_fixture_bad_dict_index.)
  *
  * Buffer contents are little-endian int32, matching the host this was written
  * for. See docs/abicase-format.md 10 on why scalar values, unlike structure and

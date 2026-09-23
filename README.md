@@ -13,9 +13,9 @@ rather than counted; a dual digest can describe either side of a handoff; and
 each consumer runs in its own supervised process, so a crash is a recorded
 result rather than the end of a run. pyarrow and dataprof — Arrow C++ and
 arrow-rs — run under it as the first differential pair, and every run reduces to
-the per-cell states the coverage model defines. The reference validator, the
-stream interface, the native Arrow C++ and DuckDB adapters and Corpus B1 are
-what M1 still owes.
+the per-cell states the coverage model defines. nanoarrow's validator runs
+beside them as the reference voice. The stream interface, the native Arrow C++
+and DuckDB adapters and Corpus B1 are what M1 still owes.
 
 ---
 
@@ -241,7 +241,11 @@ migration window is 2026 and does not stay open long.
   was fixed upstream in [#10916](https://github.com/apache/arrow-rs/pull/10916),
   merged 2026-08-30. The same run found a defect of ours — the model's `empty`
   class described an invalid `utf8` array — corrected in
-  `coverage_model_ver` 2.
+  `coverage_model_ver` 2. The reference validator then found that nanoarrow
+  validates an unaligned `utf8` offsets buffer through misaligned `int32_t`
+  loads — undefined behaviour on input the specification permits. Confirmed on
+  0.9.0 and on nanoarrow `main`, with a nanoarrow-only reproducer; not yet filed
+  upstream ([record](refval/README.md#findings)).
 - **M2** — 90 days. Succeeds on either: **(A)** a Corpus A disagreement between
   two consumers, classified as crash/leak or silent divergence, reproduced in a
   `.abicase` under 10 KB, filed upstream and accepted as valid; or **(B)** no
@@ -267,7 +271,8 @@ libabi/       C -- the .abicase format, the case model, reconstruction,
 tools/        the abicase CLI, the cross-architecture check, the
               enumerator for the bounded conformance model, and the
               corpus generator that instantiates it
-refval/       nanoarrow binding, the reference validator          (M1)
+refval/       the reference validator: nanoarrow 0.9.0, vendored and
+              pinned, behind the worker protocol
 adapters/     per-engine consumers; null and faulty are C workers,
               dataprof landed first (M0.5)
 observer/     notes only: the lifecycle state machine and the CALLSEQ

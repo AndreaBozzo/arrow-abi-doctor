@@ -50,7 +50,8 @@ jobs:
             libabi/src/*.c libabi/src/*.h libabi/include/abi/*.h \
             libabi/tests/*.c libabi/tests/*.h tools/*.c \
             adapters/dataprof/*.c adapters/common/*.c adapters/common/*.h \
-            adapters/null/*.c adapters/faulty/*.c
+            adapters/null/*.c adapters/faulty/*.c refval/*.c \
+            refval/findings/*.c
 
   linux-gcc:
     name: linux / gcc / -Werror
@@ -78,6 +79,12 @@ jobs:
       # alignment and buffer-state are layout and not data. docs/digest.md.
       - name: check the digest partition
         run: python3 tools/digest_property.py
+      # nanoarrow's ArrowArrayViewValidate(), vendored and pinned, as a second
+      # opinion on the generator: every Corpus A case must be valid at full.
+      # And the B1 fixture must be refused, which is what catches a validator
+      # that quietly validates at a lower level than the case declares.
+      - name: reference validator
+        run: python3 tools/check_refval.py
 
   sanitizers:
     name: linux / asan + ubsan
@@ -98,12 +105,20 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-      # 1880 cases through the builder, encoder and decoder is far wider input
+      # 3760 cases through the builder, encoder and decoder is far wider input
       # than the fixtures reach, and the generator is the one place that walks
       # every buffer-state and alignment class in bulk. Under ASan a leak or an
       # out-of-bounds write here is a failure rather than a plausible run.
       - name: generate corpus A under the sanitizers
         run: python3 tools/gen_corpus.py
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+      # The same validator, instrumented: nanoarrow is built with the
+      # sanitizers too, so a memory error inside the reference validator over
+      # the whole corpus is a failure here -- a finding like any other.
+      - name: reference validator under the sanitizers
+        run: python3 tools/check_refval.py
         env:
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
@@ -171,10 +186,11 @@ jobs:
       # the validity bitmap written most-significant-bit first; check_corpus.py
       # imports every case and compares every slot against the model. It needs a
       # consumer, so it lives in this job rather than in linux-gcc.
-      - name: build the corpus generator and the faulty worker
+      - name: build the corpus generator and the C workers
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          cmake --build build --target abicase-gen abi-worker-faulty abi-worker-null
+          cmake --build build --target abicase-gen abi-worker-faulty abi-worker-null \
+            abi-worker-refval
       - name: generate corpus A
         run: python tools/gen_corpus.py
       - name: read corpus A back with pyarrow
@@ -213,6 +229,7 @@ jobs:
             --worker dataprof=python \
             --worker-arg dataprof=adapters/dataprof/abi_worker.py \
             --worker-arg dataprof=--consumer --worker-arg dataprof=dataprof \
+            --worker refval=./build/refval/abi-worker-refval \
             --worker planted=./build/adapters/abi-worker-faulty \
             --cases corpus/a --out "$RUNNER_TEMP/pair"
           python tools/diff_report.py "$RUNNER_TEMP/pair/run.json" \

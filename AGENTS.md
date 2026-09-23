@@ -66,6 +66,7 @@ cmake --build build --target abicase-gen
 python tools/gen_corpus.py                 # writes corpus/a/, also what CI runs
 ./build/tools/abicase digest <file>|-      # both digests; - reads paths on stdin
 python tools/digest_property.py            # the digest partition, over the corpus
+python tools/check_refval.py               # nanoarrow: corpus valid at full, B1 refused
 cd adapters/dataprof && python check_corpus.py   # every slot vs. the model
 
 # worker isolation: the coordinator supervises one process per consumer
@@ -85,7 +86,8 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings
 clang-format --dry-run --Werror libabi/src/*.c libabi/src/*.h \
     libabi/include/abi/*.h libabi/tests/*.c libabi/tests/*.h \
     tools/*.c adapters/dataprof/*.c adapters/common/*.c \
-    adapters/common/*.h adapters/null/*.c adapters/faulty/*.c
+    adapters/common/*.h adapters/null/*.c adapters/faulty/*.c refval/*.c \
+    refval/findings/*.c
 ```
 
 The C tests are a hand-rolled harness, not a framework: they print

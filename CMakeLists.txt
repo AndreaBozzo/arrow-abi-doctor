@@ -51,12 +51,17 @@ if(ABI_ENABLE_USE_AFTER_RELEASE)
   target_compile_definitions(abi_flags INTERFACE ABI_ENABLE_USE_AFTER_RELEASE)
 endif()
 
+# Sanitizers on their own, apart from the warning set, so vendored code that is
+# not ours to warn about (refval/nanoarrow) is still instrumented: a memory
+# error inside the reference validator is a finding like any other.
+add_library(abi_sanitize INTERFACE)
 if(ABI_SANITIZERS)
   # MinGW ships no sanitizer runtime; these builds run under WSL/Linux CI.
-  target_compile_options(abi_flags INTERFACE
+  target_compile_options(abi_sanitize INTERFACE
     -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all)
-  target_link_options(abi_flags INTERFACE -fsanitize=address,undefined)
+  target_link_options(abi_sanitize INTERFACE -fsanitize=address,undefined)
 endif()
+target_link_libraries(abi_flags INTERFACE abi_sanitize)
 
 # The compile database stays in the build tree; .clangd points the editor at it.
 # Copying or symlinking it to the source root at configure time cannot work:
@@ -70,3 +75,4 @@ enable_testing()
 add_subdirectory(libabi)
 add_subdirectory(tools)
 add_subdirectory(adapters)
+add_subdirectory(refval)

@@ -3,3 +3,7 @@
 # byte-for-byte what upstream publishes -- so it is never touched by the
 # formatter, and a diff against upstream stays meaningful.
 libabi/include/abi/arrow_abi.h
+
+# nanoarrow, vendored as its own bundler produced it (refval/README.md). The
+# same reasoning: a diff against a regenerated bundle has to stay meaningful.
+refval/nanoarrow/

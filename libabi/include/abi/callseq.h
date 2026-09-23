@@ -44,13 +44,21 @@ extern "C" {
 
 /*
  * What a consumer does. Each import returns 0 when the consumer took the
- * structure and non-zero when it refused it, writing why into `detail`. On a
+ * structure and non-zero when it refused it, writing why into `detail` -- which
+ * it may also fill on success, as a note the result line then carries. On a
  * refusal ownership stays with the caller, which is how the executor knows the
  * harness, not the consumer, has to clean up. A NULL callback is an op this
  * consumer does not perform.
  */
 typedef struct {
   void *ctx;
+  /*
+   * Called once before the first op, with the case itself. For the reference
+   * validator (refval/), which is told the case's declared validation_level.
+   * A consumer under test must leave this NULL: an engine that could read what
+   * a case expects of it would no longer be the thing being measured.
+   */
+  void (*begin)(void *ctx, const AbiCase *c);
   int (*import_schema)(void *ctx, struct ArrowSchema *schema, char *detail,
                        size_t detail_size);
   int (*import_array)(void *ctx, struct ArrowArray *array, char *detail,

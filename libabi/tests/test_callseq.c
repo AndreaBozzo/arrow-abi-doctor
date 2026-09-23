@@ -264,10 +264,30 @@ static void test_a_refusal_that_leaves_it_live_is_not_blamed(void) {
          abi_callseq_outcome_str(run.result.outcome));
   CHECKF(strstr(run.result.detail, "refuses arrays") != NULL, "detail %s",
          run.result.detail);
-  /* The schema it took and never released is its own; the array it refused
-     and handed back is the harness's to clean up. */
+  /* The refusal ends the case: the consumer lets go of the schema it took,
+     and the array it refused and handed back is the harness's to clean up.
+     Neither is the consumer's failing. */
+  CHECKF(run.loose.count == 0, "%u finding(s)", run.loose.count);
+  if (run.loose.count) describe(&run.loose);
+  CHECKF(!run.leaked, "%s", "leaked");
+  abi_case_free(c);
+}
+
+/* The other side of the refusal rule: given the chance to let go and not
+   taking it, the consumer is named -- for the schema it held, not for the
+   array it handed back. */
+static void test_a_refusal_that_keeps_the_schema_is_named(void) {
+  AbiCase     *c = smoke_with(NULL, 0);
+  TestConsumer tc;
+  Run          run;
+
+  g_test = "refuse, keep schema";
+  memset(&tc, 0, sizeof(tc));
+  tc.refuse_array = REFUSE_LEAVE_LIVE;
+  tc.never_release = 1;
+  run_case(c, &tc, &run);
   CHECKF(count_rule(&run.loose, ABI_LC_NOT_RELEASED_BY_CONSUMER) == 1 &&
-             !run.loose.findings[0].is_array,
+             run.loose.count == 1 && !run.loose.findings[0].is_array,
          "%u finding(s)", run.loose.count);
   if (run.loose.count != 1) describe(&run.loose);
   CHECKF(!run.leaked, "%s", "leaked");
@@ -412,6 +432,7 @@ int main(void) {
   test_a_move_transfers_ownership_without_a_release();
   test_a_consumer_that_never_releases_is_named();
   test_a_refusal_that_leaves_it_live_is_not_blamed();
+  test_a_refusal_that_keeps_the_schema_is_named();
   test_a_refusal_that_releases_is_the_consumers_release();
   test_a_child_released_by_the_consumer_is_a_violation();
   test_an_untracked_move_is_only_stale_when_strict();

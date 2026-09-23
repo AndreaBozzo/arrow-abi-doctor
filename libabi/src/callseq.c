@@ -123,7 +123,12 @@ static AbiCallseqOutcome op_import(Exec *x, AbiOpCode code) {
     refused = c->import_schema(c->ctx, x->schema, why, sizeof(why));
     x->schema_imported = !refused;
   }
-  if (!refused) return ABI_CALLSEQ_ACCEPTED;
+  if (!refused) {
+    /* A consumer may say what it made of the structure even when it took it:
+       the reference validator says at which level it passed. */
+    if (why[0]) snprintf(x->out->detail, sizeof(x->out->detail), "%s", why);
+    return ABI_CALLSEQ_ACCEPTED;
+  }
 
   /*
    * A refusal. Some consumers release what they refused (Arrow C++'s
@@ -252,6 +257,7 @@ void abi_callseq_run(AbiReconstruction *r, const AbiCase *c,
 
   out->op_count = count;
   out->outcome = ABI_CALLSEQ_ACCEPTED;
+  if (consumer->begin) consumer->begin(consumer->ctx, c);
   for (i = 0; i < count; i++) {
     AbiCallseqOutcome o = run_op(&x, &ops[i]);
     if (o != ABI_CALLSEQ_ACCEPTED) {
@@ -262,6 +268,19 @@ void abi_callseq_run(AbiReconstruction *r, const AbiCase *c,
       out->trace[out->executed] = ops[i].code;
     }
     out->executed++;
+  }
+
+  /*
+   * A refusal ends the case, and a consumer that fails an import lets go of
+   * what it had already taken -- the schema, when it is the array it refused.
+   * Stopping the sequence without that would leave the harness releasing the
+   * consumer's schema and the state machine blaming the consumer for a release
+   * the harness never let it make. Not traced as an op: the sequence did not
+   * ask for it, the refusal did.
+   */
+  if (out->outcome == ABI_CALLSEQ_REJECTED && consumer->release_base &&
+      (x.schema_imported || x.array_imported)) {
+    consumer->release_base(consumer->ctx);
   }
 
   /*
