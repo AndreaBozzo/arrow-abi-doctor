@@ -27,7 +27,7 @@ leaked, and the data that came back has the logical digest of what was sent.
 | dataprof | two FFI defects, one a panic across the boundary ([record](docs/m0.5-smoke.md)) | fixed: [#608](https://github.com/AndreaBozzo/dataprof/pull/608), [#610](https://github.com/AndreaBozzo/dataprof/pull/610) |
 | arrow-rs | zero-length `Utf8` slice at a non-zero offset overruns its values buffer | fixed: [apache/arrow-rs#10910](https://github.com/apache/arrow-rs/issues/10910) |
 | nanoarrow | validation reads unaligned offsets through misaligned loads (UB) | filed: [apache/arrow-nanoarrow#945](https://github.com/apache/arrow-nanoarrow/issues/945) |
-| DuckDB | Arrow import reads unaligned buffers through misaligned loads (UB) | reproduced on 1.5.5 and on its development branch ([record](adapters/duckdb/README.md#findings)) |
+| DuckDB | Arrow import reads unaligned buffers through misaligned loads (UB) | filed: [duckdb/duckdb#26076](https://github.com/duckdb/duckdb/issues/26076) ([record](adapters/duckdb/README.md#findings)) |
 
 ## Scope
 

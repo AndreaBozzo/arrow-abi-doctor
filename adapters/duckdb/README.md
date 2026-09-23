@@ -63,7 +63,9 @@ none.
 
 **Status: reproduced on 1.5.5 built from the pinned source, and on DuckDB's
 development branch (`v2.0-cyanoptera` at `795e1c1`, a Debug build, which has
-UBSan on by default). Not filed upstream yet**; no DuckDB issue found for it.
+UBSan on by default). Filed as
+[duckdb/duckdb#26076](https://github.com/duckdb/duckdb/issues/26076)** on
+2026-09-23, with a compact C-API reproducer.
 
 Two sites, the same on both builds. One unaligned case per type, alignment and
 offset in Corpus A, each run in its own process:
