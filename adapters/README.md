@@ -12,7 +12,7 @@ one thing here that still runs standalone.
 | `faulty`    | M1 — a test instrument, not a consumer | C |
 | `dataprof`  | M0.5 — smoke test of our own instrument; M1 — the Python worker, pyarrow and dataprof as the first differential pair | C + Python |
 | `arrow_cpp` | M1 | C++ |
-| `duckdb`    | M1 | C++ |
+| `duckdb`    | M1 — DuckDB built from pinned source, under the sanitizers | C, over DuckDB's C API |
 | `arrow_rs`  | M3 | Rust |
 | `adbc`      | M3 | C |
 
@@ -48,6 +48,14 @@ differential pair the coordinator runs (issue #17). pyarrow re-exports what it
 imported, so its lines carry a `received` digest. Neither wheel is
 sanitizer-instrumented, which is why the native Arrow C++ adapter (#11) is still
 wanted.
+
+`duckdb/` is DuckDB behind the worker protocol, built from its pinned source
+tree with DuckDB itself instrumented (issue #12). A schema and an array go in
+through `duckdb_schema_from_arrow` and `duckdb_data_chunk_from_arrow`. The chunk
+DuckDB built comes back out through `duckdb_data_chunk_to_arrow`, so its lines
+carry a `received` digest. Streams are not taken: the current C API has no
+stream import, and the deprecated one leaks. `duckdb/README.md` has the
+provenance and two findings.
 
 ```sh
 cargo run -p abi-coordinator -- \

@@ -140,6 +140,7 @@ void abi_case_list_free(AbiCaseList *l) {
 }
 
 int abi_worker_open(const AbiWorkerArgs *args, AbiWorker *w) {
+  w->consumer_moves = 0;
   w->out = fopen(args->results, "wb");
   if (!w->out) {
     fprintf(stderr, "error: cannot write results to %s\n", args->results);
@@ -499,7 +500,7 @@ void abi_worker_run_case(AbiWorker *w, const char *case_path,
    * read first would miss exactly the structures nobody released.
    */
   abi_reconstruction_release_all(r);
-  abi_lifecycle_verify(abi_reconstruction_observer(r), 1, &lc);
+  abi_lifecycle_verify(abi_reconstruction_observer(r), !w->consumer_moves, &lc);
 
   switch (cs.outcome) {
   case ABI_CALLSEQ_ACCEPTED: status = "accepted"; break;
@@ -517,7 +518,7 @@ void abi_worker_run_case(AbiWorker *w, const char *case_path,
   x.digest = digest_out;
   x.callseq = &cs;
   x.lifecycle = &lc;
-  x.lifecycle_strict = 1;
+  x.lifecycle_strict = !w->consumer_moves;
   abi_worker_result(w, case_path, id, status, detail, &x);
 
   abi_reconstruction_free(r);

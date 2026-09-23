@@ -17,7 +17,9 @@ per-cell states the coverage model defines. nanoarrow's validator runs beside
 them as the reference voice, and Corpus B1 holds ten invalid producers, each
 resting on a clause quoted verbatim. Every cell of the model is constructible,
 streams included, and null, nanoarrow and pyarrow each run all 5650 with no
-disagreement. The native Arrow C++ and DuckDB adapters are what M1 still owes.
+disagreement. DuckDB, built from source under the sanitizers, agrees on all
+3760 array cells; its C API takes no stream. The native Arrow C++ adapter is
+what M1 still owes.
 
 ---
 
@@ -250,6 +252,10 @@ migration window is 2026 and does not stay open long.
   0.9.0 and on nanoarrow `main`, with a nanoarrow-only reproducer, and filed as
   [apache/arrow-nanoarrow#945](https://github.com/apache/arrow-nanoarrow/issues/945)
   ([record](refval/README.md#findings)).
+  The DuckDB adapter then found the same class in DuckDB: it keeps an unaligned
+  `int32` buffer as the data of its own vector and reads it through misaligned
+  loads. Reproduced on 1.5.5 built from source, with a DuckDB-only reproducer;
+  not filed ([record](adapters/duckdb/README.md#findings)).
 - **M2** — 90 days. Succeeds on either: **(A)** a Corpus A disagreement between
   two consumers, classified as crash/leak or silent divergence, reproduced in a
   `.abicase` under 10 KB, filed upstream and accepted as valid; or **(B)** no

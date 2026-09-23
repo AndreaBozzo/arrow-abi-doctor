@@ -81,13 +81,23 @@ python tools/check_isolation_run.py /tmp/run/run.json --cases 100 --crash-at 40
 python tools/diff_report.py /tmp/run/run.json  # §4 states per cell, the claim
 python tools/test_diff_report.py               # its rules, over synthetic runs
 
+# DuckDB (#12), Linux only: built from pinned source, ~20 min, under sanitizers
+cmake -S . -B build/duckdb -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+    -DABI_SANITIZERS=ON -DABI_WERROR=ON -DABI_DUCKDB=ON
+cmake --build build/duckdb && ctest --test-dir build/duckdb --output-on-failure
+cargo run -p abi-coordinator -- \
+    --worker null=./build/duckdb/adapters/abi-worker-null \
+    --worker duckdb=./build/duckdb/adapters/duckdb/abi-worker-duckdb \
+    --cases corpus/a --out /tmp/duckdb
+
 # lint and format
 ruff check . && ruff format --check . && mypy .
 cargo fmt --check && cargo clippy --all-targets -- -D warnings
 clang-format --dry-run --Werror libabi/src/*.c libabi/src/*.h \
     libabi/include/abi/*.h libabi/tests/*.c libabi/tests/*.h \
     tools/*.c adapters/dataprof/*.c adapters/common/*.c \
-    adapters/common/*.h adapters/null/*.c adapters/faulty/*.c refval/*.c \
+    adapters/common/*.h adapters/null/*.c adapters/faulty/*.c \
+    adapters/duckdb/*.c adapters/duckdb/findings/*.c refval/*.c \
     refval/findings/*.c
 ```
 

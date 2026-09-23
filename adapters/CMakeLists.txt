@@ -19,3 +19,10 @@ target_link_libraries(abi-worker-null PRIVATE abi_worker abi abi_flags)
 # paths are exercised by a process that really does those things.
 add_executable(abi-worker-faulty faulty/faulty_worker.c)
 target_link_libraries(abi-worker-faulty PRIVATE abi_worker abi abi_flags)
+
+# DuckDB is opt-in: it is built from source (duckdb/CMakeLists.txt), which a
+# build that does not run it should not pay for. The worker itself is C.
+option(ABI_DUCKDB "Build the DuckDB worker, and DuckDB with it" OFF)
+if(ABI_DUCKDB)
+  add_subdirectory(duckdb)
+endif()

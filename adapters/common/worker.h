@@ -34,6 +34,12 @@ typedef struct {
 
 typedef struct {
   FILE *out;
+  /*
+   * The consumer moves what it is handed into storage of its own, which the
+   * log cannot see, so a release there is not judged against the address it
+   * was handed at. Zero for a consumer whose every move is the executor's.
+   */
+  int consumer_moves;
 } AbiWorker;
 
 /*
@@ -115,8 +121,8 @@ void abi_worker_result(AbiWorker *w, const char *case_path, const char *id,
 /*
  * Runs one case the standard way for an in-process C consumer: read,
  * reconstruct, digest what is handed over, execute the case's CALLSEQ against
- * `consumer`, clean up, judge the lifecycle strictly -- every move is the
- * executor's own, so every release has a known address -- and write the line.
+ * `consumer`, clean up, judge the lifecycle -- strictly unless the consumer
+ * moves what it holds (`consumer_moves`) -- and write the line.
  * `received` is filled by the consumer when it hands something back, or left
  * zeroed.
  */
