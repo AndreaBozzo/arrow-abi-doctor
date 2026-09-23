@@ -81,14 +81,17 @@ python tools/check_isolation_run.py /tmp/run/run.json --cases 100 --crash-at 40
 python tools/diff_report.py /tmp/run/run.json  # §4 states per cell, the claim
 python tools/test_diff_report.py               # its rules, over synthetic runs
 
-# DuckDB (#12), Linux only: built from pinned source, ~20 min, under sanitizers
-cmake -S . -B build/duckdb -G Ninja -DCMAKE_BUILD_TYPE=Debug \
-    -DABI_SANITIZERS=ON -DABI_WERROR=ON -DABI_DUCKDB=ON
-cmake --build build/duckdb && ctest --test-dir build/duckdb --output-on-failure
+# the native pair, Arrow C++ (#11) and DuckDB (#12): Linux only, each engine
+# built from pinned source under the sanitizers (~10 and ~20 min on 6 jobs)
+cmake -S . -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+    -DABI_SANITIZERS=ON -DABI_WERROR=ON -DABI_CXX=ON \
+    -DABI_ARROW_CPP=ON -DABI_DUCKDB=ON
+cmake --build build/native && ctest --test-dir build/native --output-on-failure
 cargo run -p abi-coordinator -- \
-    --worker null=./build/duckdb/adapters/abi-worker-null \
-    --worker duckdb=./build/duckdb/adapters/duckdb/abi-worker-duckdb \
-    --cases corpus/a --out /tmp/duckdb
+    --worker null=./build/native/adapters/abi-worker-null \
+    --worker arrow-cpp=./build/native/adapters/arrow_cpp/abi-worker-arrow-cpp \
+    --worker duckdb=./build/native/adapters/duckdb/abi-worker-duckdb \
+    --cases corpus/a --out /tmp/native
 
 # lint and format
 ruff check . && ruff format --check . && mypy .
@@ -97,8 +100,8 @@ clang-format --dry-run --Werror libabi/src/*.c libabi/src/*.h \
     libabi/include/abi/*.h libabi/tests/*.c libabi/tests/*.h \
     tools/*.c adapters/dataprof/*.c adapters/common/*.c \
     adapters/common/*.h adapters/null/*.c adapters/faulty/*.c \
-    adapters/duckdb/*.c adapters/duckdb/findings/*.c refval/*.c \
-    refval/findings/*.c
+    adapters/duckdb/*.c adapters/duckdb/findings/*.c adapters/arrow_cpp/*.cc \
+    refval/*.c refval/findings/*.c
 ```
 
 The C tests are a hand-rolled harness, not a framework: they print

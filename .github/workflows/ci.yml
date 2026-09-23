@@ -51,7 +51,8 @@ jobs:
             libabi/tests/*.c libabi/tests/*.h tools/*.c \
             adapters/dataprof/*.c adapters/common/*.c adapters/common/*.h \
             adapters/null/*.c adapters/faulty/*.c adapters/duckdb/*.c \
-            adapters/duckdb/findings/*.c refval/*.c refval/findings/*.c
+            adapters/duckdb/findings/*.c adapters/arrow_cpp/*.cc refval/*.c \
+            refval/findings/*.c
 
   linux-gcc:
     name: linux / gcc / -Werror
@@ -306,10 +307,10 @@ jobs:
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
 
-  duckdb:
-    name: linux / duckdb under asan + ubsan
+  native:
+    name: linux / arrow c++ + duckdb under asan + ubsan
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -317,26 +318,33 @@ jobs:
           python-version: "3.12"
       - name: install
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build ccache
-      # DuckDB is built from its pinned source (adapters/duckdb), which takes
-      # the better part of an hour on a runner. Its objects change only when
-      # the pin or its flags do, and both live in that one CMakeLists.txt.
+      # Arrow C++ and DuckDB are built from pinned source (adapters/arrow_cpp,
+      # adapters/duckdb), which cold takes the better part of an hour on a
+      # runner. Their objects change only when a pin or its flags do, and both
+      # live in those two CMakeLists.txt. An older DuckDB-only cache still
+      # seeds the DuckDB half.
       - uses: actions/cache@v4
         with:
           path: ~/.cache/ccache
-          key: duckdb-ccache-${{ runner.os }}-${{ hashFiles('adapters/duckdb/CMakeLists.txt') }}
+          key: native-ccache-${{ runner.os }}-${{ hashFiles('adapters/duckdb/CMakeLists.txt', 'adapters/arrow_cpp/CMakeLists.txt') }}
+          restore-keys: |
+            native-ccache-${{ runner.os }}-
+            duckdb-ccache-${{ runner.os }}-
       - name: configure
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
-            -DABI_SANITIZERS=ON -DABI_WERROR=ON -DABI_DUCKDB=ON \
+            -DABI_SANITIZERS=ON -DABI_WERROR=ON -DABI_CXX=ON \
+            -DABI_ARROW_CPP=ON -DABI_DUCKDB=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
       - name: build
         run: cmake --build build
         env:
-          CCACHE_MAXSIZE: 5G
+          CCACHE_MAXSIZE: 6G
       - name: ccache statistics
         run: ccache --show-stats
-      # Includes duckdb_finding_arrow_scan_schema_leak, which requires the leak
-      # known upstream as duckdb/duckdb#16050: it fails the day it is fixed.
+      # Includes the DuckDB findings' reproducers: duckdb/duckdb#16050's leak,
+      # and the unaligned buffer DuckDB keeps. Each requires its finding, so
+      # each fails the day a pinned DuckDB changes.
       - name: test
         run: ctest --test-dir build --output-on-failure
         env:
@@ -344,20 +352,23 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
       - name: generate corpus A
         run: python3 tools/gen_corpus.py
-      # DuckDB against the null control over the whole model, both
-      # instrumented. A memory error inside DuckDB aborts its worker and is
-      # recorded against the case; the report prints DuckDB's verdicts rather
-      # than pinning them. Its stream cells are unrun on purpose
-      # (adapters/duckdb/README.md), so it makes no claim over them.
-      - name: duckdb under the coordinator
+      # M1's differential pair, both instrumented, against the null control
+      # over the whole model. A memory error inside either engine aborts its
+      # worker and is recorded against the case. The report prints the
+      # verdicts rather than pinning them. DuckDB's stream cells are unrun on
+      # purpose (adapters/duckdb/README.md), so it makes no claim over them.
+      - name: arrow c++ and duckdb under the coordinator
         run: |
           cargo run --quiet -p abi-coordinator -- \
             --worker null=./build/adapters/abi-worker-null \
+            --worker arrow-cpp=./build/adapters/arrow_cpp/abi-worker-arrow-cpp \
             --worker duckdb=./build/adapters/duckdb/abi-worker-duckdb \
-            --cases corpus/a --out "$RUNNER_TEMP/duckdb"
-          python3 tools/check_isolation_run.py "$RUNNER_TEMP/duckdb/run.json" \
-            --worker duckdb --expect-sanitizers address,undefined
-          python3 tools/diff_report.py "$RUNNER_TEMP/duckdb/run.json"
+            --cases corpus/a --out "$RUNNER_TEMP/native"
+          for w in arrow-cpp duckdb; do
+            python3 tools/check_isolation_run.py "$RUNNER_TEMP/native/run.json" \
+              --worker "$w" --expect-sanitizers address,undefined
+          done
+          python3 tools/diff_report.py "$RUNNER_TEMP/native/run.json"
         env:
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1

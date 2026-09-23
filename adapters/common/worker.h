@@ -19,6 +19,10 @@
 #include "abi/lifecycle.h"
 #include "abi/reconstruct.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define ABI_WORKER_PROTOCOL 1
 
 typedef struct {
@@ -129,5 +133,9 @@ void abi_worker_result(AbiWorker *w, const char *case_path, const char *id,
 void abi_worker_run_case(AbiWorker *w, const char *case_path,
                          const AbiConsumer *consumer,
                          AbiWorkerDigest   *digest_out);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* ABI_WORKER_H */

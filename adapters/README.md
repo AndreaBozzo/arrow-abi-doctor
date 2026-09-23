@@ -11,7 +11,7 @@ one thing here that still runs standalone.
 | `null`      | M1 — the minimal conforming consumer, and the control voice | C |
 | `faulty`    | M1 — a test instrument, not a consumer | C |
 | `dataprof`  | M0.5 — smoke test of our own instrument; M1 — the Python worker, pyarrow and dataprof as the first differential pair | C + Python |
-| `arrow_cpp` | M1 | C++ |
+| `arrow_cpp` | M1 — Arrow C++ built from pinned source, under the sanitizers | C++ |
 | `duckdb`    | M1 — DuckDB built from pinned source, under the sanitizers | C, over DuckDB's C API |
 | `arrow_rs`  | M3 | Rust |
 | `adbc`      | M3 | C |
@@ -46,8 +46,14 @@ consumer per process: `--consumer pyarrow` (Arrow C++'s `ImportArray`) or
 arrow-rs pair, each through its production import path, and the first
 differential pair the coordinator runs (issue #17). pyarrow re-exports what it
 imported, so its lines carry a `received` digest. Neither wheel is
-sanitizer-instrumented, which is why the native Arrow C++ adapter (#11) is still
-wanted.
+sanitizer-instrumented; `arrow_cpp/` is the instrumented Arrow C++.
+
+`arrow_cpp/` is Arrow C++ behind the worker protocol, built from the pinned
+Apache source release with ASan and UBSan (issue #11). It calls the same import
+functions pyarrow does (`ImportSchema`, `ImportRecordBatch`,
+`ImportRecordBatchReader`) and re-exports every batch for a `received` digest,
+so it and pyarrow differ in instrumentation only. `arrow_cpp/README.md` has the
+provenance.
 
 `duckdb/` is DuckDB behind the worker protocol, built from its pinned source
 tree with DuckDB itself instrumented (issue #12). A schema and an array go in

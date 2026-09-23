@@ -26,3 +26,12 @@ option(ABI_DUCKDB "Build the DuckDB worker, and DuckDB with it" OFF)
 if(ABI_DUCKDB)
   add_subdirectory(duckdb)
 endif()
+
+# Arrow C++ is opt-in for the same reason, and its worker is C++.
+option(ABI_ARROW_CPP "Build the Arrow C++ worker, and Arrow C++ with it" OFF)
+if(ABI_ARROW_CPP)
+  if(NOT ABI_CXX)
+    message(FATAL_ERROR "ABI_ARROW_CPP needs ABI_CXX=ON: its worker is C++")
+  endif()
+  add_subdirectory(arrow_cpp)
+endif()

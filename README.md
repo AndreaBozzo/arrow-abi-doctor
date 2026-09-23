@@ -3,7 +3,7 @@
 An adversarial, structure-aware harness for the Arrow **C Data Interface** and
 **C Stream Interface**, built around portable, minimized reproducers.
 
-**Status: M1, in progress.** The `.abicase` container format is implemented and
+**Status: M1, complete.** The `.abicase` container format is implemented and
 verified across three platforms including a big-endian one; cases reconstruct
 into real `ArrowSchema` / `ArrowArray` structures with the lifecycle observed.
 The bounded conformance model is frozen, and all five of its lifecycles are
@@ -17,9 +17,10 @@ per-cell states the coverage model defines. nanoarrow's validator runs beside
 them as the reference voice, and Corpus B1 holds ten invalid producers, each
 resting on a clause quoted verbatim. Every cell of the model is constructible,
 streams included, and null, nanoarrow and pyarrow each run all 5650 with no
-disagreement. DuckDB, built from source under the sanitizers, agrees on all
-3760 array cells; its C API takes no stream. The native Arrow C++ adapter is
-what M1 still owes.
+disagreement. The native pair runs instrumented: Arrow C++ and DuckDB, each
+built from pinned source under ASan and UBSan. Arrow C++ runs all 5650 cells
+with no disagreement. DuckDB agrees on all 3760 array cells; its C API takes
+no stream.
 
 ---
 
