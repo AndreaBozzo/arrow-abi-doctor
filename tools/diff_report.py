@@ -99,12 +99,18 @@ def documented(limits: list[dict[str, Any]], consumer: str, cell: Case, detail: 
 # One return per row of §5's table, in the order the rows must be tried: a panic
 # or a leak outranks how the case was answered. Split up, the order is hidden.
 def classify(  # noqa: PLR0911, PLR0912
-    line: dict[str, Any], cell: Case, consumer: str, limits: list[dict[str, Any]]
+    line: dict[str, Any],
+    cell: Case,
+    consumer: str,
+    limits: list[dict[str, Any]],
+    hands_back: bool = False,
 ) -> tuple[str, str | None, str]:
     """(state, route, reason) for one executed case.
 
     route is None for a plain agreement, "defect", "compatibility",
     "undocumented" (which also puts it on the review list) or "representation".
+    hands_back is the worker header's: the consumer returns the data, so an
+    absent `received` is lost evidence rather than a consumer with nothing to say.
     """
     status = line.get("status")
     detail = str(line.get("detail", ""))
@@ -141,6 +147,8 @@ def classify(  # noqa: PLR0911, PLR0912
         # compared: a cell with no verdict. An absent `received` is different
         # -- a consumer that hands nothing back -- and still agrees.
         return "not-run", None, f"what came back could not be digested: {digest['received_error']}"
+    if sent and not received and hands_back:
+        return "not-run", None, "hands the data back, but the line has no received digest"
     if sent and received:
         if sent["logical"] != received["logical"]:
             return "disagree", "defect", "silent divergence: the logical digest changed"
@@ -186,6 +194,8 @@ def build(
                 continue
             by_id[case_id] = line
         suspect = case_key(w["suspect"]) if w.get("suspect") else None
+        header = w.get("header") or {}
+        hands_back = header.get("hands_back") is True
 
         for cell in cells:
             case_id = constructed.get(cell)
@@ -198,7 +208,7 @@ def build(
                 record = {"state": "not-run", "reason": "not executed"}
             else:
                 line = by_id[case_id]
-                state, route, reason = classify(line, cell, name, limits)
+                state, route, reason = classify(line, cell, name, limits, hands_back)
                 record = {"state": state, "status": line.get("status"), "reason": reason}
                 if route:
                     record["route"] = route
@@ -213,7 +223,6 @@ def build(
         # Exactly one state per cell: anything else is this tool's bug, and a
         # coverage figure built on it would be wrong without looking wrong.
         assert sum(counts.values()) == len(cells), (name, counts)
-        header = w.get("header") or {}
         summary[name] = {
             "consumer": header.get("consumer"),
             "consumer_version": header.get("consumer_version"),

@@ -145,6 +145,7 @@ int main(int argc, char **argv) {
     return 1;
   }
   w.consumer_moves = 1;
+  w.hands_back = 1;
 
   abi_worker_header(&w, "arrow-cpp",
                     arrow::GetBuildInfo().version_string.c_str());

@@ -212,6 +212,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  w.hands_back = 1;
   abi_worker_header(&w, "faulty", mode);
   if (strcmp(mode, "drop-offset") == 0) {
     for (i = 0; i < list.count; i++)

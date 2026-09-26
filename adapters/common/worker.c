@@ -141,6 +141,7 @@ void abi_case_list_free(AbiCaseList *l) {
 
 int abi_worker_open(const AbiWorkerArgs *args, AbiWorker *w) {
   w->consumer_moves = 0;
+  w->hands_back = 0;
   w->out = fopen(args->results, "wb");
   if (!w->out) {
     fprintf(stderr, "error: cannot write results to %s\n", args->results);
@@ -240,6 +241,7 @@ void abi_worker_header(AbiWorker *w, const char *consumer,
   put_field(out, "compiler", ABI_WORKER_CC, 0);
   put_key(out, "sanitizers", 0);
   put_str_list(out, ABI_WORKER_SANITIZERS);
+  put_bool(out, "hands_back", w->hands_back, 0);
   fputs("}\n", out);
   fflush(out);
 }

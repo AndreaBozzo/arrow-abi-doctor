@@ -168,6 +168,7 @@ int main(int argc, char **argv) {
     return 1;
   }
   w.consumer_moves = 1;
+  w.hands_back = 1;
 
   abi_worker_header(&w, "duckdb", duckdb_library_version());
   for (i = 0; i < list.count; i++) {

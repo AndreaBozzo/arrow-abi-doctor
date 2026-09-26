@@ -421,6 +421,7 @@ def main(argv: list[str]) -> int:
             "os": host_os(),
             "runtime": f"{platform.python_implementation()} {platform.python_version()}",
             "sanitizers": [],
+            "hands_back": args["consumer"] == "pyarrow",
         }
         if fault:
             header["fault_injection"] = f"{fault[0]}@{fault[1]}"

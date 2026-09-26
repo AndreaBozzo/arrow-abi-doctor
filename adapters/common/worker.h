@@ -44,6 +44,12 @@ typedef struct {
    * was handed at. Zero for a consumer whose every move is the executor's.
    */
   int consumer_moves;
+  /*
+   * The consumer hands the data back, so every accepted case with a `sent`
+   * digest carries a `received` one or a reason it has none. Declared in the
+   * header, so a line that silently lacks it is not read as agreement.
+   */
+  int hands_back;
 } AbiWorker;
 
 /*

@@ -72,7 +72,8 @@ death is not a property this harness claims.
 
 ```json
 {"worker_protocol": 1, "consumer": "dataprof", "consumer_version": "0.11.0",
- "arch": "x86_64", "os": "linux", "compiler": "gcc 13.2.0", "sanitizers": ["address", "undefined"]}
+ "arch": "x86_64", "os": "linux", "compiler": "gcc 13.2.0", "sanitizers": ["address", "undefined"],
+ "hands_back": false}
 ```
 
 `consumer` and `worker_protocol` are required; the rest are recorded when the
@@ -145,14 +146,22 @@ not fill a missing `received` with a copy of `sent`: absent has to stay
 distinguishable from equal, or a consumer that returned nothing reads as one
 that returned the data intact.
 
+Which of the two a worker is, it says once, in the header: `"hands_back":
+true` for a consumer that returns the data (pyarrow, Arrow C++, DuckDB),
+`false` for one that does not. From a worker that hands back, an accepted line
+with a `sent` digest and neither `received` nor `received_error` is a line
+that lost its evidence, and the report counts the cell as not run rather than
+as agreement. A worker that omits the field is read as before.
+
 A `logical` mismatch is a silent divergence, a bug under every outcome
 (`docs/coverage-matrix.md` §5). A `physical` mismatch with `logical` equal is a
 representation difference — a materialized slice, a rename — and a
 compatibility entry rather than a defect.
 
-This field was added after `worker_protocol` 1 was published, and it is
-additive: a reader that ignores it loses nothing it had before, and a worker
-that omits it is still a conforming v1 worker. `worker_protocol` stays 1.
+This field, and `hands_back` in the header, were added after `worker_protocol`
+1 was published, and they are additive: a reader that ignores them loses
+nothing it had before, and a worker that omits them is still a conforming v1
+worker. `worker_protocol` stays 1.
 
 ### The `callseq` and `lifecycle` objects
 

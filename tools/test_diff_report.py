@@ -153,6 +153,20 @@ def test_a_consumer_that_hands_nothing_back_still_agrees() -> None:
     assert report["claim"]["claimable"]
 
 
+def test_a_missing_received_from_a_worker_that_hands_back_is_not_run() -> None:
+    # The header says the consumer returns the data, so a line without either
+    # half lost its evidence: nothing was compared, and it is not an agreement.
+    lines = [line(k) for k in FULL]
+    del lines[9]["digest"]["received"]
+    w = worker(lines)
+    w["header"]["hands_back"] = True
+    report = diff_report.build(CELLS, FULL, [w], [])
+    record = cell_record(report, lines[9]["id"])
+    assert record["state"] == "not-run" and "no received digest" in record["reason"], record
+    assert report["consumers"]["w"]["states"]["not-run"] == 1, report["consumers"]
+    assert not report["claim"]["claimable"]
+
+
 def test_a_physical_only_change_is_representation_not_defect() -> None:
     lines = [line(k) for k in FULL]
     lines[3]["digest"]["received"]["physical"] = "d" * 32
