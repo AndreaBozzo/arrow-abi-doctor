@@ -46,11 +46,12 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from coverage_matrix import MODEL_VERSION, Case, enumerate_model
+from coverage_matrix import LIFECYCLE, MODEL_VERSION, Case, enumerate_model
 from gen_corpus import read_manifest
 
 ROOT = Path(__file__).resolve().parent.parent
 LIMITS = ROOT / "docs" / "documented-limits.toml"
+EXPECTED = ROOT / "docs" / "expected-results.toml"
 REPORT_SCHEMA = "abi-doctor/diff-report/1"
 STATES = ("agree", "disagree", "not-run", "inexpressible")
 CLAIM = (
@@ -397,6 +398,15 @@ def main() -> int:
     parser.add_argument("--limits", type=Path, default=LIMITS)
     parser.add_argument("--out", type=Path, help="default: report.json next to run.json")
     parser.add_argument(
+        "--expect",
+        nargs="?",
+        const=EXPECTED,
+        type=Path,
+        metavar="TOML",
+        help="exit 1 on any disagreement, crash or unrun cell the expectations file does not "
+        f"allow (default {EXPECTED.relative_to(ROOT).as_posix()})",
+    )
+    parser.add_argument(
         "--expect-divergence",
         metavar="WORKER",
         help="exit 1 unless WORKER shows silent divergences and no other kind of defect: "
@@ -411,8 +421,76 @@ def main() -> int:
     out.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     print_summary(report)
     print(f"report: {out}")
+    status = 0
+    if args.expect:
+        status |= check_expected(report, load_expected(args.expect))
     if args.expect_divergence:
-        return check_planted(report, args.expect_divergence)
+        status |= check_planted(report, args.expect_divergence)
+    return status
+
+
+def load_expected(path: Path) -> dict[str, dict[str, Any]]:
+    """The expectations file, validated: an entry that allows anything says why."""
+    consumers: dict[str, dict[str, Any]] = tomllib.loads(path.read_text(encoding="utf-8")).get(
+        "consumer", {}
+    )
+    for name, entry in consumers.items():
+        where = f"{path.name} consumer.{name}"
+        unknown = set(entry) - {"unrun", "disagree", "why"}
+        if unknown:
+            raise SystemExit(f"{where}: unknown key(s) {sorted(unknown)}")
+        bad = [x for x in entry.get("unrun", []) if x not in LIFECYCLE]
+        if bad:
+            raise SystemExit(f"{where}: {bad} not lifecycles of the model")
+        if (entry.get("unrun") or entry.get("disagree")) and not entry.get("why"):
+            raise SystemExit(f"{where}: `why` is required")
+    return consumers
+
+
+def check_expected(report: dict[str, Any], expected: dict[str, dict[str, Any]]) -> int:
+    """Nothing worse than the expectations file allows; anything better is a note.
+
+    Pins regressions, not findings: a disagreement that goes away, or an unrun
+    lifecycle a consumer starts taking, is reported as a stale entry and never
+    fails the run -- the reason check_planted leaves real consumers alone.
+    """
+    unexpected: list[str] = [f"problem: {p}" for p in report["problems"]]
+    stale: list[str] = []
+    for name, s in report["consumers"].items():
+        if report["claim"]["per_consumer"][name]["instrument"]:
+            continue
+        consumer = s["consumer"] or name
+        entry = expected.get(consumer, {})
+        unrun, disagree = set(entry.get("unrun", [])), set(entry.get("disagree", []))
+        ran_unrun: Counter[str] = Counter()
+        for cell in report["cells"]:
+            record = cell["consumers"].get(name)
+            if record is None:
+                continue
+            where = f"{name} {cell['case_id']} [{cell['type']} {cell['lifecycle']}]"
+            state = record["state"]
+            # A crash is `not-run` with a defect route; it fails wherever it lands.
+            crashed = record.get("route") == "defect" and state != "disagree"
+            if crashed or (state == "disagree" and cell["case_id"] not in disagree):
+                unexpected.append(f"{where}: {record['reason']}")
+            elif state in ("not-run", "inexpressible") and cell["lifecycle"] not in unrun:
+                unexpected.append(f"{where}: {state}, {record.get('reason', '')}")
+            elif state == "agree" and cell["lifecycle"] in unrun:
+                ran_unrun[cell["lifecycle"]] += 1
+            if state != "disagree" and cell["case_id"] in disagree:
+                stale.append(f"{consumer}: {cell['case_id']} no longer disagrees")
+        stale += [
+            f"{consumer}: ran {n} `{lc}` cell(s) it is expected not to"
+            for lc, n in ran_unrun.items()
+        ]
+    for note in stale:
+        print(f"note  stale expectation, {note}")
+    for miss in unexpected[:20]:
+        print(f"UNEXPECTED {miss[:200]}")
+    if unexpected:
+        print(f"MISMATCH: {len(unexpected)} result(s) worse than the expectations allow")
+        return 1
+    print("ok  every consumer within its expectations")
     return 0
 
 

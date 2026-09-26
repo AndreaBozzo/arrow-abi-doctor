@@ -92,6 +92,8 @@ cargo run -p abi-coordinator -- \
     --worker arrow-cpp=./build/native/adapters/arrow_cpp/abi-worker-arrow-cpp \
     --worker duckdb=./build/native/adapters/duckdb/abi-worker-duckdb \
     --cases corpus/a --out /tmp/native
+python tools/diff_report.py /tmp/native/run.json --expect  # fails on a result
+                    # worse than docs/expected-results.toml; only notes a fix
 
 # lint and format
 ruff check . && ruff format --check . && mypy .

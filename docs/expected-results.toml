@@ -1,0 +1,21 @@
+# What CI holds each consumer's run over Corpus A to (`tools/diff_report.py
+# --expect`). A consumer not listed here must run every cell and disagree on
+# none. A listed one may leave the cells of the named lifecycles unrun, and may
+# disagree on the listed case ids -- each entry with the reason, as the README
+# table gives it.
+#
+# The check fails on what is worse than this file and only notes what is
+# better: a fixed finding, or a consumer that starts taking streams, prints a
+# line saying which entry is stale, and never fails the run. A crash fails it
+# wherever it lands, unrun lifecycle or not.
+#
+# Keyed by the `consumer` of each worker's header, not by the name a run gives
+# the worker on the command line.
+
+[consumer.duckdb]
+unrun = ["streamed", "early-release", "EOF"]
+why = "no stream import in its C API (adapters/duckdb/README.md)"
+
+[consumer.dataprof]
+unrun = ["streamed", "early-release", "EOF"]
+why = "refuses stream-only producers"

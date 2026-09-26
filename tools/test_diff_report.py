@@ -13,6 +13,8 @@ Plain asserts and a count, like the C suites; no test framework is a dependency.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import sys
 import tempfile
 from collections.abc import Callable
@@ -306,6 +308,82 @@ def test_malformed_limits_are_refused() -> None:
 
 def test_the_shipped_limits_file_parses() -> None:
     diff_report.load_limits(diff_report.LIMITS)
+
+
+STREAMS = ("streamed", "early-release", "EOF")
+
+
+def expect(report: dict[str, Any], expected: dict[str, Any]) -> int:
+    with contextlib.redirect_stdout(io.StringIO()):
+        return diff_report.check_expected(report, expected)
+
+
+NO_STREAMS = {"w": {"unrun": list(STREAMS), "why": "no stream import"}}
+
+
+def test_expected_passes_a_clean_run() -> None:
+    assert expect(run(FULL, [line(k) for k in FULL]), {}) == 0
+
+
+def test_expected_allows_only_the_declared_unrun_lifecycles() -> None:
+    ran = [line(k) for k, c in FULL.items() if c.lifecycle not in STREAMS]
+    assert expect(run(FULL, ran), NO_STREAMS) == 0
+    # The same run with nothing declared, and with one more cell missing.
+    assert expect(run(FULL, ran), {}) == 1
+    assert expect(run(FULL, ran[1:]), NO_STREAMS) == 1
+
+
+def test_expected_fails_an_unlisted_disagreement_and_passes_a_listed_one() -> None:
+    lines = [line(k) for k in FULL]
+    lines[7]["digest"]["received"]["logical"] = "c" * 32
+    report = run(FULL, lines)
+    assert expect(report, {}) == 1
+    listed = {"w": {"disagree": [lines[7]["id"]], "why": "a filed finding"}}
+    assert expect(report, listed) == 0
+
+
+def test_expected_fails_a_crash_even_in_an_unrun_lifecycle() -> None:
+    ids = [k for k, c in FULL.items() if c.lifecycle not in STREAMS]
+    dead = first(FULL, lambda c: c.lifecycle == "streamed")
+    report = run(FULL, [line(k) for k in ids], suspect=f"corpus/a/{dead}.abicase")
+    assert expect(report, NO_STREAMS) == 1
+
+
+def test_expected_only_notes_what_got_better() -> None:
+    # A consumer that starts taking streams, a finding that gets fixed: stale
+    # entries, never a failure, or the check fails the day a finding is fixed.
+    listed = {"w": {**NO_STREAMS["w"], "disagree": [next(iter(FULL))]}}
+    assert expect(run(FULL, [line(k) for k in FULL]), listed) == 0
+
+
+def test_an_instrument_is_not_held_to_expectations() -> None:
+    lines = [line(k) for k in FULL]
+    lines[7]["digest"]["received"]["logical"] = "c" * 32
+    faulty = worker(lines)
+    faulty["header"] = {"worker_protocol": 1, "consumer": "faulty"}
+    report = diff_report.build(CELLS, FULL, [faulty], [])
+    assert expect(report, {}) == 0
+
+
+def test_malformed_expectations_are_refused() -> None:
+    for text in (
+        '[consumer.x]\nunrun = ["streamed"]\n',
+        '[consumer.x]\nunrun = ["sideways"]\nwhy = "?"\n',
+        '[consumer.x]\ndisagree = ["00"]\n',
+        '[consumer.x]\nwhy = "?"\nunrn = ["EOF"]\n',
+    ):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "e.toml"
+            path.write_text(text, encoding="utf-8")
+            try:
+                diff_report.load_expected(path)
+            except SystemExit:
+                continue
+            raise AssertionError(f"accepted malformed expectations:\n{text}")
+
+
+def test_the_shipped_expectations_file_parses() -> None:
+    diff_report.load_expected(diff_report.EXPECTED)
 
 
 def main() -> int:
