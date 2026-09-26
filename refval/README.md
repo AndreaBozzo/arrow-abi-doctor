@@ -85,7 +85,12 @@ validation agreed.
 
 **Status: confirmed, filed upstream as
 [apache/arrow-nanoarrow#945](https://github.com/apache/arrow-nanoarrow/issues/945)
-(2026-09-23), with an offer to submit the fix.**
+(2026-09-23), and fixed there by
+[#946](https://github.com/apache/arrow-nanoarrow/pull/946) (merged 2026-09-25),
+which reads every site listed below through an unaligned-safe load. Not yet in
+a release: the vendored 0.9.0 still does it, so the carve-out stays until a
+release carrying #946 is vendored. That the fix silences the reproducer is read
+from its diff, not yet run here.**
 
 `ArrowArrayViewValidateDefault()` reads the first and last offsets of a `utf8` /
 `binary` array as `data.as_int32[i]`. When the offsets buffer is not 4-byte

@@ -14,11 +14,16 @@ N = 5650 cells ([docs/coverage-matrix.md](docs/coverage-matrix.md)).
 | nanoarrow 0.9.0 (reference validator) | vendored | 5650 | 0 | 0 |
 | pyarrow 25.0.1 | wheel | 5650 | 0 | 0 |
 | Arrow C++ 25.0.1 | source, ASan + UBSan | 5650 | 0 | 0 |
-| DuckDB 1.5.5 | source, ASan + UBSan | 3760 | 0 | 1890 — no stream import in its C API |
+| DuckDB 1.5.5 | source, ASan + UBSan¹ | 3760 | 0 | 1890 — no stream import in its C API |
 | dataprof 0.11.0 (arrow-rs) | wheel | 3760 | 0 | 1890 — refuses stream-only producers |
 
 "Agree" means the case ran its call sequence, the lifecycle was clean, nothing
 leaked, and the data that came back has the logical digest of what was sent.
+
+¹ Without UBSan's alignment check. DuckDB reads unaligned buffers through
+misaligned loads (the finding below), which would abort the run at the first
+such cell. The finding's own test requires the UBSan report, and the
+exemption comes out when it is fixed.
 
 ## Findings
 
@@ -26,7 +31,7 @@ leaked, and the data that came back has the logical digest of what was sent.
 |---|---|---|
 | dataprof | two FFI defects, one a panic across the boundary ([record](docs/m0.5-smoke.md)) | fixed: [#608](https://github.com/AndreaBozzo/dataprof/pull/608), [#610](https://github.com/AndreaBozzo/dataprof/pull/610) |
 | arrow-rs | zero-length `Utf8` slice at a non-zero offset overruns its values buffer | fixed: [apache/arrow-rs#10910](https://github.com/apache/arrow-rs/issues/10910) |
-| nanoarrow | validation reads unaligned offsets through misaligned loads (UB) | filed: [apache/arrow-nanoarrow#945](https://github.com/apache/arrow-nanoarrow/issues/945) |
+| nanoarrow | validation reads unaligned offsets through misaligned loads (UB) | fixed upstream, unreleased: [apache/arrow-nanoarrow#945](https://github.com/apache/arrow-nanoarrow/issues/945), [#946](https://github.com/apache/arrow-nanoarrow/pull/946) ([record](refval/README.md#findings)) |
 | DuckDB | Arrow import reads unaligned buffers through misaligned loads (UB) | filed: [duckdb/duckdb#26076](https://github.com/duckdb/duckdb/issues/26076) ([record](adapters/duckdb/README.md#findings)) |
 
 ## Scope
