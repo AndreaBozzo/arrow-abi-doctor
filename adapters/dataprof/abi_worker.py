@@ -149,12 +149,12 @@ ARRAY_OPS = ("NOP", "MOVE_STRUCT", "IMPORT_SCHEMA", "IMPORT_ARRAY", "RELEASE_BAS
 # that can be told to misbehave, and neither of these can.
 PERFORMED = {
     "pyarrow": (*ARRAY_OPS, "STREAM_GET_SCHEMA", "STREAM_GET_NEXT", "EXPECT_EOF"),
-    "dataprof": ARRAY_OPS,
+    "dataprof": (*ARRAY_OPS, "STREAM_GET_SCHEMA", "STREAM_GET_NEXT", "EXPECT_EOF"),
 }
 # Why, where a consumer cannot perform a whole kind of sequence.
 NOT_PERFORMED_BECAUSE = {
-    "dataprof": "dataprof.profile() takes __arrow_c_array__ producers and refuses a "
-    "stream-only one as an unsupported source type (checked on 0.11.0)",
+    "dataprof": "dataprof.profile() reads a stream to its end in one call, so it "
+    "cannot stop after the schema",
 }
 
 
@@ -195,6 +195,22 @@ def inject(fault: tuple[str, int] | None, index: int) -> None:
     faulthandler._sigsegv()  # type: ignore[attr-defined]
 
 
+class StreamOnly:
+    """A stream case as a stream-only producer: __arrow_c_stream__ and nothing else.
+
+    An _abicase case has every capsule method whichever way it was loaded, and a
+    consumer offered both __arrow_c_array__ and __arrow_c_stream__ may pick
+    either -- dataprof takes the array, which a stream-loaded case refuses. A
+    stream case offers only what it is.
+    """
+
+    def __init__(self, case: Any) -> None:
+        self.case = case
+
+    def __arrow_c_stream__(self, requested_schema: Any = None) -> Any:
+        return self.case.__arrow_c_stream__(requested_schema)
+
+
 class SequenceInvalid(Exception):
     """The sequence cannot run as written -- the harness's side, not the consumer's."""
 
@@ -204,6 +220,13 @@ def refusal(consumer: str, names: list[str]) -> str | None:
     refused = next((n for n in names if n not in PERFORMED[consumer]), None)
     if refused is None and "IMPORT_SCHEMA" in names and "IMPORT_ARRAY" not in names:
         refused = "IMPORT_SCHEMA"  # a schema-only handoff: neither consumer takes one
+    if (
+        refused is None
+        and consumer == "dataprof"
+        and "STREAM_GET_SCHEMA" in names
+        and "EXPECT_EOF" not in names
+    ):
+        refused = "STREAM_GET_SCHEMA"  # a stream released before its end
     if refused is None:
         return None
     why = f"{refused}: not performed by the {consumer} worker"
@@ -259,9 +282,21 @@ class Session:
     def open_stream(self) -> None:
         if self.reader is not None:
             return
+        inject(self.fault, self.index)
+        if self.consumer == "dataprof":
+            import dataprof
+
+            # Takes the stream and drains it: get_schema(), get_next() to EOF,
+            # release. The STREAM_GET_NEXT and EXPECT_EOF steps after this one
+            # are what it already did, so they have nothing left to do: profile()
+            # returns only past EOF, which makes last_eof true by construction.
+            # What shows the calls were made is the observer's event log.
+            self.reader = dataprof.profile(StreamOnly(self.case), name="abicase")
+            self.last_eof = True
+            self.detail = f"{self.reader.rows} rows x {self.reader.columns} cols, profiled"
+            return
         import pyarrow
 
-        inject(self.fault, self.index)
         # Takes the stream and calls get_schema() on it.
         self.reader = pyarrow.RecordBatchReader.from_stream(self.case)
         self.detail = "schema only"
@@ -269,6 +304,8 @@ class Session:
     def next_batch(self) -> None:
         import _abicase
 
+        if self.consumer == "dataprof":
+            return  # drained by open_stream()
         self.batch = None  # done with the last batch, before asking for the next
         try:
             self.batch = self.reader.read_next_batch()

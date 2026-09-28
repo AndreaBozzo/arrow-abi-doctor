@@ -17,5 +17,5 @@ unrun = ["streamed", "early-release", "EOF"]
 why = "no stream import in its C API (adapters/duckdb/README.md)"
 
 [consumer.dataprof]
-unrun = ["streamed", "early-release", "EOF"]
-why = "refuses stream-only producers"
+unrun = ["early-release"]
+why = "profile() reads a stream to its end in one call, so it cannot stop after the schema"

@@ -40,8 +40,7 @@ MANIFEST_ROWS = [
 ]
 LIFECYCLE = {row[0]: row[8] for row in MANIFEST_ROWS}
 DATA_FREE = ("early-release", "EOF")
-STREAM_LIFECYCLES = ("streamed", *DATA_FREE)
-STREAM_CELLS = sum(life in STREAM_LIFECYCLES for life in LIFECYCLE.values())
+EARLY_RELEASE_CELLS = sum(life == "early-release" for life in LIFECYCLE.values())
 WORKER = "adapters/dataprof/abi_worker.py"
 # The fault runs: FAULT_CASES cases, the fault injected on the FAULT_AT-th.
 FAULT_CASES = 5
@@ -93,17 +92,17 @@ def check_pair(tmp: pathlib.Path) -> list[str]:
         if w["protocol_errors"]:
             problems.append(f"{name}: protocol {w['protocol_errors']}")
         header, *rows = lines(w)
-        # dataprof takes no stream-only producer, so its worker refuses every
-        # stream sequence by name -- those, and nothing else, may be errors.
-        # pyarrow runs them all.
-        expected = STREAM_CELLS if name == "dataprof" else 0
+        # dataprof.profile() drains a stream in one call, so its worker refuses
+        # the one stream sequence that stops after the schema -- those, and
+        # nothing else, may be errors. pyarrow runs them all.
+        expected = EARLY_RELEASE_CELLS if name == "dataprof" else 0
         refused = [r for r in rows if r["status"] == "error"]
         if len(refused) != expected or any(
             "not performed by the dataprof worker" not in r["detail"]
-            or LIFECYCLE[r["id"]] not in STREAM_LIFECYCLES
+            or LIFECYCLE[r["id"]] != "early-release"
             for r in refused
         ):
-            problems.append(f"{name}: {len(refused)} errors, expected {expected} stream refusals")
+            problems.append(f"{name}: {len(refused)} errors, expected {expected} refusals")
         if header.get("sanitizers") != [] or "fault_injection" in header:
             problems.append(f"{name}: header misstates the run: {header}")
         for row in rows:

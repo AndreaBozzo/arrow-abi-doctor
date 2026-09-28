@@ -15,7 +15,7 @@ N = 5650 cells ([docs/coverage-matrix.md](docs/coverage-matrix.md)).
 | pyarrow 25.0.1 | wheel | 5650 | 0 | 0 |
 | Arrow C++ 25.0.1 | source, ASan + UBSan | 5650 | 0 | 0 |
 | DuckDB 1.5.6 | source, ASan + UBSan¹ | 3760 | 0 | 1890 — no stream import in its C API |
-| dataprof 0.11.0 (arrow-rs) | wheel | 3760 | 0 | 1890 — refuses stream-only producers |
+| dataprof 0.12.0 (arrow-rs) | wheel | 5645 | 0 | 5 — `profile()` drains a stream, so it cannot stop after the schema |
 
 "Agree" means the case ran its call sequence, the lifecycle was clean, nothing
 leaked, and the data that came back has the logical digest of what was sent.
