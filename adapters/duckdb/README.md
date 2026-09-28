@@ -7,10 +7,10 @@ what makes it an independent voice in a differential run (issue #12).
 
 | | |
 |---|---|
-| Version | DuckDB 1.5.5 |
-| Source | the tag's source archive, `archive/refs/tags/v1.5.5.tar.gz` |
-| SHA-256 | `f33155ff962e6e1e08fd1e9caffa487d4325aa60999e2eabc76feff534d6558b` |
-| Commit | `d8cdaa33fda8df955cc76ef58a280f68f4cd43fa` |
+| Version | DuckDB 1.5.6 |
+| Source | the tag's source archive, `archive/refs/tags/v1.5.6.tar.gz` |
+| SHA-256 | `1fadcbe9e69e1470f9093b6bcde08daf477d729c449e59a807f45c346622099b` |
+| Commit | `069cc9f9b5be802405797faecc284961b07c70ef` |
 
 GitHub publishes no hash for a generated source archive, so the SHA-256 is the
 one this project computed when pinning it. The archive's own embedded commit id
@@ -61,9 +61,9 @@ none.
 
 ### An unaligned buffer is kept, and read through a misaligned pointer
 
-**Status: reproduced on 1.5.5 built from the pinned source, and on DuckDB's
-development branch (`v2.0-cyanoptera` at `795e1c1`, a Debug build, which has
-UBSan on by default). Filed as
+**Status: reproduced on 1.5.5 and on 1.5.6 (2026-09-28), each built from the
+pinned source, and on DuckDB's development branch (`v2.0-cyanoptera` at
+`795e1c1`, a Debug build, which has UBSan on by default). Filed as
 [duckdb/duckdb#26076](https://github.com/duckdb/duckdb/issues/26076)** on
 2026-09-23, with a compact C-API reproducer.
 
@@ -126,12 +126,12 @@ NULL and never calls it. Under the C Stream Interface, the caller of
 `get_schema` owns the result and must release it.
 
 [`findings/arrow_scan_schema_leak.c`](findings/arrow_scan_schema_leak.c)
-reproduces it with DuckDB's C API and nothing of this project. Against 1.5.5
+reproduces it with DuckDB's C API and nothing of this project. Against 1.5.6
 built from the pinned source, with sanitizers:
 
 ```
 sum(x) = 6
-DuckDB v1.5.5: get_schema() called 5 time(s), 0 schema(s) released
+DuckDB v1.5.6: get_schema() called 5 time(s), 0 schema(s) released
 ```
 
 LeakSanitizer attributes the leaked schemas to `duckdb_arrow_scan`

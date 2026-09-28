@@ -16,12 +16,12 @@ endif()
 
 include(ExternalProject)
 
-set(ABI_DUCKDB_VERSION "1.5.5")
-set(ABI_DUCKDB_COMMIT "d8cdaa33fda8df955cc76ef58a280f68f4cd43fa")
+set(ABI_DUCKDB_VERSION "1.5.6")
+set(ABI_DUCKDB_COMMIT "069cc9f9b5be802405797faecc284961b07c70ef")
 set(ABI_DUCKDB_URL
   "https://github.com/duckdb/duckdb/archive/refs/tags/v${ABI_DUCKDB_VERSION}.tar.gz")
 set(ABI_DUCKDB_SHA256
-  "f33155ff962e6e1e08fd1e9caffa487d4325aa60999e2eabc76feff534d6558b")
+  "1fadcbe9e69e1470f9093b6bcde08daf477d729c449e59a807f45c346622099b")
 set(ABI_DUCKDB_SOURCE_DIR "" CACHE PATH
   "Extracted DuckDB source tree; the pinned archive is fetched when empty")
 
