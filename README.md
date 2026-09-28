@@ -14,7 +14,7 @@ N = 5650 cells ([docs/coverage-matrix.md](docs/coverage-matrix.md)).
 | nanoarrow 0.9.0 (reference validator) | vendored | 5650 | 0 | 0 |
 | pyarrow 25.0.1 | wheel | 5650 | 0 | 0 |
 | Arrow C++ 25.0.1 | source, ASan + UBSan | 5650 | 0 | 0 |
-| DuckDB 1.5.5 | source, ASan + UBSan¹ | 3760 | 0 | 1890 — no stream import in its C API |
+| DuckDB 1.5.6 | source, ASan + UBSan¹ | 3760 | 0 | 1890 — no stream import in its C API |
 | dataprof 0.11.0 (arrow-rs) | wheel | 3760 | 0 | 1890 — refuses stream-only producers |
 
 "Agree" means the case ran its call sequence, the lifecycle was clean, nothing
