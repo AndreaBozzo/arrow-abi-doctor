@@ -30,9 +30,10 @@ include = ["adapters", "tools"]
 [tool.ty.analysis]
 # _abicase is our own C extension and has no stubs; it does not exist at all on
 # a host where the extension has not been built, which includes every Windows
-# checkout today (see issue #8). dataprof and pyarrow are per-host (the smoke
-# group), so the lint job does not install them.
-allowed-unresolved-imports = ["_abicase", "dataprof", "pyarrow", "pyarrow.*"]
+# checkout today (see issue #8). dataprof and pyarrow must be installed (the
+# smoke group, as the lint job does): without them `import dataprof` resolves to
+# the adapters/dataprof folder as a namespace package instead of failing.
+allowed-unresolved-imports = ["_abicase"]
 
 [tool.ty.rules]
 # mypy's warn_unused_ignores, kept.
