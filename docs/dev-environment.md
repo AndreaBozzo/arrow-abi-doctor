@@ -22,7 +22,7 @@ and the cross-architecture check is the M0 gate.
 | ASan / UBSan | no runtime shipped | yes |
 | Valgrind | not available | yes |
 | big-endian (s390x) | no | `gcc-s390x-linux-gnu` + `qemu-user-static` |
-| ruff / mypy / clang-format | `.venv` | either |
+| ruff / ty / clang-format | `.venv` | either |
 | Rust | stable-msvc, links fine | stable-gnu |
 
 Both hosts see the same checkout: `C:/dev/arrow-abi-doctor` is
@@ -49,7 +49,7 @@ artifacts never land in the Windows working tree.
 | `.clang-format-ignore` | exempts `arrow_abi.h`, which is vendored verbatim |
 | `.clangd` | points the editor at `build/`'s compile database |
 | `.editorconfig` | LF, indent width, per-language line length |
-| `pyproject.toml` | ruff, mypy, and the pinned `dev` dependency group |
+| `pyproject.toml` | ruff, ty, and the pinned `dev` dependency group |
 | `rust-toolchain.toml` | channel plus `rustfmt` and `clippy`, ahead of any crate |
 | `rustfmt.toml` | edition 2024, `max_width = 100`, matching dataprof |
 
@@ -140,7 +140,7 @@ cd adapters/dataprof && python setup.py build_ext --inplace && python run_smoke.
 python repro_findings.py          # regression checks against two fixed dataprof bugs
 
 # lint and format
-ruff check . && ruff format --check . && mypy .
+ruff check . && ruff format --check . && ty check
 clang-format --dry-run --Werror libabi/src/*.c libabi/src/*.h \
     libabi/include/abi/*.h libabi/tests/*.c libabi/tests/*.h \
     tools/*.c adapters/dataprof/*.c

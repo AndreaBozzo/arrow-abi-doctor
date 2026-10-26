@@ -21,22 +21,22 @@ ignore = [
 # PanicException does not derive from Exception and would otherwise end the run.
 # Selecting the rule and annotating the exceptions keeps that decision visible.
 
-[tool.mypy]
-python_version = "3.12"
-files = ["adapters", "tools"]
-warn_unused_configs = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-no_implicit_optional = true
-strict_equality = true
+[tool.ty.environment]
+python-version = "3.12"
 
-[[tool.mypy.overrides]]
+[tool.ty.src]
+include = ["adapters", "tools"]
+
+[tool.ty.analysis]
 # _abicase is our own C extension and has no stubs; it does not exist at all on
 # a host where the extension has not been built, which includes every Windows
-# checkout today (see issue #8). dataprof and pyarrow ship no type information
-# that mypy can use here.
-module = ["_abicase", "dataprof", "pyarrow"]
-ignore_missing_imports = true
+# checkout today (see issue #8). dataprof and pyarrow are per-host (the smoke
+# group), so the lint job does not install them.
+allowed-unresolved-imports = ["_abicase", "dataprof", "pyarrow", "pyarrow.*"]
+
+[tool.ty.rules]
+# mypy's warn_unused_ignores, kept.
+unused-ignore-comment = "error"
 
 [dependency-groups]
 # Formatters are pinned exactly, not floated. clang-format's output changes
@@ -44,7 +44,7 @@ ignore_missing_imports = true
 # tripwire that fires when a runner image updates rather than when code changes.
 dev = [
   "ruff==0.16.3",
-  "mypy==2.3.1",
+  "ty==0.0.91",
   "clang-format==22.1.8",
   "types-setuptools",
 ]

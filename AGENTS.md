@@ -96,7 +96,7 @@ python tools/diff_report.py /tmp/native/run.json --expect  # fails on a result
                     # worse than docs/expected-results.toml; only notes a fix
 
 # lint and format
-ruff check . && ruff format --check . && mypy .
+ruff check . && ruff format --check . && ty check
 cargo fmt --check && cargo clippy --all-targets -- -D warnings
 clang-format --dry-run --Werror libabi/src/*.c libabi/src/*.h \
     libabi/include/abi/*.h libabi/tests/*.c libabi/tests/*.h \
@@ -239,7 +239,7 @@ measure is worth less than no harness.
   tree and gated in CI. `libabi/include/abi/arrow_abi.h` is vendored verbatim
   from the Arrow spec and is excluded via `.clang-format-ignore` — do not
   reformat or "clean up" that file.
-- **Python**: ruff + mypy, 100 columns, configured in `pyproject.toml`. Consumer
+- **Python**: ruff + ty, 100 columns, configured in `pyproject.toml`. Consumer
   imports are deliberately deferred into the functions that use them (PLC0415 is
   disabled) so a host lacking pyarrow can still import the harness.
 - **Catch `BaseException`, not `Exception`, around consumer calls.** pyo3 derives

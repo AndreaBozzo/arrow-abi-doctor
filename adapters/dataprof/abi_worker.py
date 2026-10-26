@@ -192,7 +192,7 @@ def inject(fault: tuple[str, int] | None, index: int) -> None:
 
     # A real SIGSEGV, not an exception. Private but long-standing CPython API,
     # used by its own test suite; typeshed does not list it.
-    faulthandler._sigsegv()  # type: ignore[attr-defined]
+    faulthandler._sigsegv()  # ty: ignore[unresolved-attribute]
 
 
 class StreamOnly:
