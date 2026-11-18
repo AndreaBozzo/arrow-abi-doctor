@@ -164,7 +164,7 @@ jobs:
       - name: install
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ninja-build gcc-s390x-linux-gnu qemu-user-static
+          sudo apt-get install -y -qq ninja-build gcc-s390x-linux-gnu qemu-user
       # The M0 gate. A native integer serialized by accident is invisible on
       # every little-endian machine and passes every test above; only running
       # the code on a big-endian host finds it.

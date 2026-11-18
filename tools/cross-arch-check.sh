@@ -16,7 +16,8 @@
 # Check 2 is the one that catches a native integer serialized by accident: such
 # a bug is invisible on x86 and passes every little-endian test ever written.
 #
-# Requires: gcc, cmake, ninja, gcc-s390x-linux-gnu, qemu-user-static, python3.
+# Requires: gcc, cmake, ninja, gcc-s390x-linux-gnu, python3, and qemu-user
+# (qemu-s390x; qemu-user-static on distributions that still split it out).
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,9 +31,13 @@ cross_dir="$root/build/s390x"
 step() { printf '\n=== %s ===\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
-for tool in cmake ninja s390x-linux-gnu-gcc qemu-s390x-static python3; do
+for tool in cmake ninja s390x-linux-gnu-gcc python3; do
   command -v "$tool" >/dev/null 2>&1 || fail "missing required tool: $tool"
 done
+# Ubuntu 26.04 has no qemu-user-static package: qemu-user now ships
+# the emulator as qemu-s390x. The cross binaries are static, so either works.
+qemu="$(command -v qemu-s390x-static || command -v qemu-s390x)" \
+  || fail "missing required tool: qemu-s390x (package qemu-user)"
 
 step "building native ($(uname -m), little-endian)"
 cmake -S "$root" -B "$native_dir" -G Ninja \
@@ -48,7 +53,7 @@ cmake --build "$cross_dir" >/dev/null
 echo "ok"
 
 native_cli="$native_dir/tools/abicase"
-cross_cli="qemu-s390x-static $cross_dir/tools/abicase"
+cross_cli="$qemu $cross_dir/tools/abicase"
 
 # Confirm the cross binary really is big-endian rather than a silently native
 # build: an ELF header check is cheap and the whole exercise is void without it.
@@ -58,11 +63,11 @@ fi
 echo "cross binary: $(file -b "$cross_dir/tools/abicase" | cut -d, -f1-2)"
 
 step "1. test suites on the big-endian host"
-qemu-s390x-static "$cross_dir/libabi/abicase_tests" | tail -2
+"$qemu" "$cross_dir/libabi/abicase_tests" | tail -2
 # Reconstruction matters here as much as the format does: the metadata wire form
 # is written in NATIVE byte order by design, so big-endian is the only place
 # that half of the encoder is actually exercised.
-qemu-s390x-static "$cross_dir/libabi/reconstruct_tests" | tail -2
+"$qemu" "$cross_dir/libabi/reconstruct_tests" | tail -2
 echo "ok"
 
 step "2. both hosts encode the same case to the same bytes"
@@ -100,7 +105,7 @@ step "5. both hosts generate the same corpus A"
 tuples="$work/tuples.tsv"
 le_corpus="$work/corpus-native"
 be_corpus="$work/corpus-s390x"
-cross_gen="qemu-s390x-static $cross_dir/tools/abicase-gen"
+cross_gen="$qemu $cross_dir/tools/abicase-gen"
 python3 "$root/tools/coverage_matrix.py" --list > "$tuples"
 mkdir -p "$le_corpus" "$be_corpus"
 "$native_dir/tools/abicase-gen" --out "$le_corpus" "$tuples" \

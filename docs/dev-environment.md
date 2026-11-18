@@ -21,7 +21,7 @@ and the cross-architecture check is the M0 gate.
 | CPython adapter extension | MSVC (see below) | gcc |
 | ASan / UBSan | no runtime shipped | yes |
 | Valgrind | not available | yes |
-| big-endian (s390x) | no | `gcc-s390x-linux-gnu` + `qemu-user-static` |
+| big-endian (s390x) | no | `gcc-s390x-linux-gnu` + `qemu-user` (`qemu-user-static` before Ubuntu 26.04) |
 | ruff / ty / clang-format | `.venv` | either |
 | Rust | stable-msvc, links fine | stable-gnu |
 
